@@ -64,13 +64,9 @@ class AppController(QObject):
 
         # Thread-safe signals cho hotkey callback
         self._trigger_signal.connect(
-            self._start_selection,
-            Qt.ConnectionType.QueuedConnection
+            self._start_selection, Qt.ConnectionType.QueuedConnection
         )
-        self._error_signal.connect(
-            self._show_error,
-            Qt.ConnectionType.QueuedConnection
-        )
+        self._error_signal.connect(self._show_error, Qt.ConnectionType.QueuedConnection)
 
         # Global hotkey
         self._setup_hotkey()
@@ -80,9 +76,7 @@ class AppController(QObject):
 
         hotkey = settings.get("hotkey", "q").upper()
         self._main_window.set_processing(False)
-        self._main_window.log(
-            f"translatorTdev ready. Hotkey: {hotkey}", "ok"
-        )
+        self._main_window.log(f"translatorTdev ready. Hotkey: {hotkey}", "ok")
 
     def _setup_hotkey(self):
         mgr = get_hotkey_manager()
@@ -123,9 +117,7 @@ class AppController(QObject):
 
         self._selection_window = SelectionWindow(pixmap)
         self._selection_window.region_selected.connect(self._on_region_selected)
-        self._selection_window.selection_cancelled.connect(
-            self._on_selection_cancelled
-        )
+        self._selection_window.selection_cancelled.connect(self._on_selection_cancelled)
         self._selection_window.showFullScreen()
         self._selection_window.setFocus()
 
@@ -151,14 +143,10 @@ class AppController(QObject):
         """User confirmed selection region."""
         # Validate dimensions
         if w <= 0 or h <= 0:
-            self._main_window.log(
-                f"Invalid region size: {w}×{h}px — try again", "warn"
-            )
+            self._main_window.log(f"Invalid region size: {w}×{h}px — try again", "warn")
             return
 
-        self._main_window.log(
-            f"Region selected: ({x},{y})  {w}×{h}px", "info"
-        )
+        self._main_window.log(f"Region selected: ({x},{y})  {w}×{h}px", "info")
         self._cleanup_selection_window()  # Clean up sau khi chọn xong
         self._overlay.hide()
         self._capture_region = QRect(x, y, w, h)
@@ -181,9 +169,7 @@ class AppController(QObject):
 
     def _on_ocr_done(self, results: list):
         count = len(results)
-        self._main_window.log(
-            f"OCR complete — {count} text block(s) found", "ocr"
-        )
+        self._main_window.log(f"OCR complete — {count} text block(s) found", "ocr")
         if count == 0:
             self._main_window.log("No text detected in region.", "warn")
 
@@ -247,9 +233,7 @@ class AppController(QObject):
 
     def _on_overlay_closed(self):
         hotkey = settings.get("hotkey", "q").upper()
-        self._main_window.set_status(
-            f"Ready  —  press {hotkey} or click Capture", "ok"
-        )
+        self._main_window.set_status(f"Ready  —  press {hotkey} or click Capture", "ok")
 
     def quit(self):
         """Graceful shutdown."""

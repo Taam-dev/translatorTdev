@@ -28,6 +28,7 @@ TRANSLATION_CACHE_FILE = CACHE_DIR / "translation_cache.json"
 # TRANSLATION CACHE
 # ==================================================
 
+
 class TranslationCache:
     """Persistent local translation cache."""
 
@@ -62,7 +63,7 @@ class TranslationCache:
         if len(self._cache) >= self.max_size:
             # Remove oldest 10%
             keys = list(self._cache.keys())
-            for k in keys[:max(1, len(keys)//10)]:
+            for k in keys[: max(1, len(keys) // 10)]:
                 del self._cache[k]
         self._cache[self._key(text, src, tgt, backend)] = translation
         self._save()
@@ -99,6 +100,7 @@ LANG_NAMES = {
     "hi": "Hindi",
 }
 
+
 def lang_name(code: str) -> str:
     return LANG_NAMES.get(code, code.upper())
 
@@ -106,6 +108,7 @@ def lang_name(code: str) -> str:
 # ==================================================
 # TRANSLATION PROMPT BUILDER
 # ==================================================
+
 
 def build_translation_prompt(
     text: str,
@@ -144,9 +147,7 @@ def build_translation_prompt(
             "Keep translations concise and natural for reading speed. "
             "Preserve speaker emotion and tone."
         ),
-        "general": (
-            "Translate naturally and accurately."
-        ),
+        "general": ("Translate naturally and accurately."),
     }
 
     style_note = style_instructions.get(style, style_instructions["novel"])
@@ -178,6 +179,7 @@ Style note: {style_note}
 # BACKEND: GOOGLE TRANSLATE (free, online)
 # ==================================================
 
+
 class GoogleTranslateBackend:
     """
     Google Translate via deep-translator.
@@ -194,11 +196,11 @@ class GoogleTranslateBackend:
     def _load(self):
         try:
             from deep_translator import GoogleTranslator
+
             self._GT = GoogleTranslator
         except ImportError:
             raise RuntimeError(
-                "deep-translator not installed.\n"
-                "Run: pip install deep-translator"
+                "deep-translator not installed.\n" "Run: pip install deep-translator"
             )
 
     def translate(self, text: str, source: str, target: str) -> str:
@@ -218,7 +220,7 @@ class GoogleTranslateBackend:
     def _translate_chunked(self, text: str, source: str, target: str) -> str:
         """Split long text at sentence boundaries and translate in chunks."""
         # Split at paragraph or sentence boundaries
-        chunks = re.split(r'(\n\n|\. (?=[A-Z]))', text)
+        chunks = re.split(r"(\n\n|\. (?=[A-Z]))", text)
         translated = []
         buf = ""
         for chunk in chunks:
@@ -250,6 +252,7 @@ class GoogleTranslateBackend:
 # BACKEND: OPENAI (paid, best quality)
 # ==================================================
 
+
 class OpenAIBackend:
     """
     OpenAI GPT translation.
@@ -267,6 +270,7 @@ class OpenAIBackend:
     def _get_client(self):
         if self._client is None:
             import openai
+
             self._client = openai.OpenAI(api_key=self.api_key)
         return self._client
 
@@ -274,8 +278,7 @@ class OpenAIBackend:
         if not text.strip() or not self.api_key:
             return text
         prompt = build_translation_prompt(
-            text, source, target,
-            style=settings.get("translation_style", "novel")
+            text, source, target, style=settings.get("translation_style", "novel")
         )
         try:
             client = self._get_client()
@@ -284,9 +287,9 @@ class OpenAIBackend:
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are a professional literary translator. Return only the translation, no explanations."
+                        "content": "You are a professional literary translator. Return only the translation, no explanations.",
                     },
-                    {"role": "user", "content": prompt}
+                    {"role": "user", "content": prompt},
                 ],
                 max_tokens=2000,
                 temperature=0.3,
@@ -316,6 +319,7 @@ class OpenAIBackend:
 # BACKEND: OLLAMA (free local AI)
 # ==================================================
 
+
 class OllamaBackend:
     """
     Ollama local AI backend.
@@ -340,23 +344,24 @@ class OllamaBackend:
 
     # Recommended models ranked by translation quality
     RECOMMENDED_MODELS = [
-        ("qwen2.5:7b",   "Best for EN↔VI/ZH, 4.7GB",  "4GB RAM"),
-        ("gemma3:4b",    "Fast, good quality, 3.3GB",   "6GB RAM"),
-        ("qwen2.5:14b",  "High quality, 9GB",           "16GB RAM"),
-        ("llama3.2:3b",  "Very fast, 2GB",              "4GB RAM"),
-        ("aya:8b",       "Multilingual specialist, 5GB","8GB RAM"),
-        ("mistral:7b",   "Good for EU languages, 4.1GB","8GB RAM"),
-        ("qwen2.5:3b",   "Lightweight, 2GB",            "4GB RAM"),
+        ("qwen2.5:7b", "Best for EN↔VI/ZH, 4.7GB", "4GB RAM"),
+        ("gemma3:4b", "Fast, good quality, 3.3GB", "6GB RAM"),
+        ("qwen2.5:14b", "High quality, 9GB", "16GB RAM"),
+        ("llama3.2:3b", "Very fast, 2GB", "4GB RAM"),
+        ("aya:8b", "Multilingual specialist, 5GB", "8GB RAM"),
+        ("mistral:7b", "Good for EU languages, 4.1GB", "8GB RAM"),
+        ("qwen2.5:3b", "Lightweight, 2GB", "4GB RAM"),
     ]
 
     def __init__(self, host: str = None, model: str = "qwen2.5:7b"):
-        self.host  = (host or self.DEFAULT_HOST).rstrip("/")
+        self.host = (host or self.DEFAULT_HOST).rstrip("/")
         self.model = model
         self._session = None
 
     def _get_session(self):
         if self._session is None:
             import requests
+
             self._session = requests.Session()
             self._session.headers.update({"Content-Type": "application/json"})
         return self._session
@@ -366,8 +371,7 @@ class OllamaBackend:
             return text
 
         prompt = build_translation_prompt(
-            text, source, target,
-            style=settings.get("translation_style", "novel")
+            text, source, target, style=settings.get("translation_style", "novel")
         )
 
         payload = {
@@ -406,19 +410,22 @@ class OllamaBackend:
         """Remove common LLM output artifacts."""
         # Remove "Translation:" prefix if model added it
         output = re.sub(
-            r'^(Translation|Translated|Output|Result|Answer)\s*:\s*',
-            '', output, flags=re.IGNORECASE
+            r"^(Translation|Translated|Output|Result|Answer)\s*:\s*",
+            "",
+            output,
+            flags=re.IGNORECASE,
         ).strip()
 
         # Remove surrounding quotes if the whole thing is quoted
-        if (output.startswith('"') and output.endswith('"') and
-                output.count('"') == 2):
+        if output.startswith('"') and output.endswith('"') and output.count('"') == 2:
             output = output[1:-1]
 
         # Remove "Note:" or explanations at end
         output = re.sub(
-            r'\n*(Note|Translator\'?s? note|TN)\s*:.*$',
-            '', output, flags=re.IGNORECASE | re.DOTALL
+            r"\n*(Note|Translator\'?s? note|TN)\s*:.*$",
+            "",
+            output,
+            flags=re.IGNORECASE | re.DOTALL,
         ).strip()
 
         return output
@@ -427,10 +434,8 @@ class OllamaBackend:
         """Check if Ollama server is running."""
         try:
             import requests
-            resp = requests.get(
-                f"{self.host}/api/tags",
-                timeout=3
-            )
+
+            resp = requests.get(f"{self.host}/api/tags", timeout=3)
             return resp.status_code == 200
         except Exception:
             return False
@@ -439,6 +444,7 @@ class OllamaBackend:
         """Test connection and return (success, message)."""
         try:
             import requests
+
             resp = requests.get(f"{self.host}/api/tags", timeout=5)
             if resp.status_code != 200:
                 return False, f"HTTP {resp.status_code}"
@@ -450,7 +456,10 @@ class OllamaBackend:
                 return False, "Ollama running but no models installed"
 
             if self.model.split(":")[0] in " ".join(models):
-                return True, f"Model '{self.model}' ready. All models: {', '.join(models)}"
+                return (
+                    True,
+                    f"Model '{self.model}' ready. All models: {', '.join(models)}",
+                )
             else:
                 return False, (
                     f"Model '{self.model}' not found.\n"
@@ -464,6 +473,7 @@ class OllamaBackend:
         """List all installed Ollama models."""
         try:
             import requests
+
             resp = requests.get(f"{self.host}/api/tags", timeout=5)
             data = resp.json()
             return [m["name"] for m in data.get("models", [])]
@@ -477,6 +487,7 @@ class OllamaBackend:
         """
         try:
             import requests
+
             resp = requests.post(
                 f"{self.host}/api/pull",
                 json={"name": model_name},
@@ -502,6 +513,7 @@ class OllamaBackend:
 # BACKEND: LM STUDIO (free local AI, OpenAI-compatible)
 # ==================================================
 
+
 class LMStudioBackend:
     """
     LM Studio local AI backend.
@@ -524,13 +536,14 @@ class LMStudioBackend:
     DEFAULT_HOST = "http://localhost:1234"
 
     def __init__(self, host: str = None, model: str = "local-model"):
-        self.host  = (host or self.DEFAULT_HOST).rstrip("/")
+        self.host = (host or self.DEFAULT_HOST).rstrip("/")
         self.model = model
         self._client = None
 
     def _get_client(self):
         if self._client is None:
             import openai
+
             self._client = openai.OpenAI(
                 base_url=f"{self.host}/v1",
                 api_key="lm-studio",  # LM Studio doesn't need a real key
@@ -542,8 +555,7 @@ class LMStudioBackend:
             return text
 
         prompt = build_translation_prompt(
-            text, source, target,
-            style=settings.get("translation_style", "novel")
+            text, source, target, style=settings.get("translation_style", "novel")
         )
 
         try:
@@ -553,9 +565,9 @@ class LMStudioBackend:
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are a professional literary translator. Return only the translation, no explanations."
+                        "content": "You are a professional literary translator. Return only the translation, no explanations.",
                     },
-                    {"role": "user", "content": prompt}
+                    {"role": "user", "content": prompt},
                 ],
                 max_tokens=2000,
                 temperature=0.3,
@@ -564,8 +576,7 @@ class LMStudioBackend:
 
             # Clean output artifacts
             result = re.sub(
-                r'^(Translation|Translated)\s*:\s*',
-                '', result, flags=re.IGNORECASE
+                r"^(Translation|Translated)\s*:\s*", "", result, flags=re.IGNORECASE
             ).strip()
 
             return result or text
@@ -576,10 +587,11 @@ class LMStudioBackend:
     def is_available(self) -> bool:
         try:
             import requests
+
             resp = requests.get(
                 f"{self.host}/v1/models",
                 timeout=3,
-                headers={"Authorization": "Bearer lm-studio"}
+                headers={"Authorization": "Bearer lm-studio"},
             )
             return resp.status_code == 200
         except Exception:
@@ -588,10 +600,11 @@ class LMStudioBackend:
     def test_connection(self) -> tuple[bool, str]:
         try:
             import requests
+
             resp = requests.get(
                 f"{self.host}/v1/models",
                 timeout=5,
-                headers={"Authorization": "Bearer lm-studio"}
+                headers={"Authorization": "Bearer lm-studio"},
             )
             if resp.status_code == 200:
                 data = resp.json()
@@ -606,10 +619,11 @@ class LMStudioBackend:
     def list_models(self) -> list[str]:
         try:
             import requests
+
             resp = requests.get(
                 f"{self.host}/v1/models",
                 timeout=5,
-                headers={"Authorization": "Bearer lm-studio"}
+                headers={"Authorization": "Bearer lm-studio"},
             )
             data = resp.json()
             return [m["id"] for m in data.get("data", [])]
@@ -620,6 +634,7 @@ class LMStudioBackend:
 # ==================================================
 # BACKEND: LLAMACPP SERVER
 # ==================================================
+
 
 class LlamaCppBackend:
     """
@@ -654,6 +669,7 @@ class LlamaCppBackend:
 
         try:
             import requests
+
             resp = requests.post(
                 f"{self.host}/completion",
                 json=payload,
@@ -670,6 +686,7 @@ class LlamaCppBackend:
     def is_available(self) -> bool:
         try:
             import requests
+
             resp = requests.get(f"{self.host}/health", timeout=3)
             return resp.status_code == 200
         except Exception:
@@ -678,6 +695,7 @@ class LlamaCppBackend:
     def test_connection(self) -> tuple[bool, str]:
         try:
             import requests
+
             resp = requests.get(f"{self.host}/health", timeout=5)
             if resp.status_code == 200:
                 return True, f"llama.cpp server running at {self.host}"
@@ -690,6 +708,7 @@ class LlamaCppBackend:
 # MAIN TRANSLATOR
 # ==================================================
 
+
 class Translator:
     """
     Main translation interface.
@@ -698,9 +717,9 @@ class Translator:
     """
 
     BACKENDS = {
-        "google":   GoogleTranslateBackend,
-        "openai":   OpenAIBackend,
-        "ollama":   OllamaBackend,
+        "google": GoogleTranslateBackend,
+        "openai": OpenAIBackend,
+        "ollama": OllamaBackend,
         "lmstudio": LMStudioBackend,
         "llamacpp": LlamaCppBackend,
     }
@@ -711,7 +730,6 @@ class Translator:
         self._init_backend()
 
     def _init_backend(self):
-        """Initialize the backend specified in settings."""
         name = settings.get("translation_backend", "google")
 
         try:
@@ -742,7 +760,6 @@ class Translator:
                 )
 
             else:
-                print(f"[Translator] Unknown backend '{name}', falling back to Google")
                 self._backend = GoogleTranslateBackend()
                 name = "google"
 
@@ -750,136 +767,91 @@ class Translator:
             print(f"[Translator] Backend: {name}")
 
         except Exception as e:
-            print(f"[Translator] Backend init failed ({name}): {e}")
-            print("[Translator] Falling back to Google Translate")
+            print(f"[Translator] Backend init failed: {e}")
             self._backend = GoogleTranslateBackend()
             self._backend_name = "google"
 
-    def translate(
-        self,
-        text: str,
-        source: Optional[str] = None,
-        target: Optional[str] = None,
-    ) -> str:
-        """
-        Translate text with caching.
-        Re-initializes backend if settings changed.
-        """
+    def translate(self, text, source=None, target=None):
         src = source or settings.get("source_language", "en")
         tgt = target or settings.get("target_language", "vi")
 
         if not text.strip():
             return text
 
-        # Re-init if backend changed
-        current_backend = settings.get("translation_backend", "google")
-        if current_backend != self._backend_name:
+        if settings.get("translation_backend", "google") != self._backend_name:
             self._init_backend()
 
-        # Cache check
-        if settings.get("cache_translations", True):
-            cached = _cache.get(text, src, tgt, self._backend_name)
-            if cached:
-                print(f"[Translator] Cache hit ({len(cached)} chars)")
-                return cached
-
-        # Translate
-        print(f"[Translator] Translating {len(text)} chars "
-              f"({src}→{tgt}) via {self._backend_name}...")
-        t0 = time.time()
+        cached = _cache.get(text, src, tgt, self._backend_name)
+        if cached:
+            return cached
 
         try:
             result = self._backend.translate(text, src, tgt)
-        except Exception as e:
-            print(f"[Translator] Backend error: {e}")
+        except Exception:
             result = text
 
-        elapsed = time.time() - t0
-        print(f"[Translator] Done in {elapsed:.2f}s")
-
-        # Cache result
-        if settings.get("cache_translations", True) and result != text:
+        if result and result != text:
             _cache.set(text, src, tgt, result, self._backend_name)
 
         return result
 
     def translate_paragraphs(self, paragraphs: list[str]) -> list[str]:
-        """
-        Translate list of paragraphs.
-
-        For AI backends: sends all paragraphs together for better context.
-        For Google: sends individually (API limit friendly).
-        """
         if not paragraphs:
             return []
 
         backend = settings.get("translation_backend", "google")
 
-        # AI backends: translate as one block for better context
         if backend in ("ollama", "lmstudio", "llamacpp", "openai"):
             return self._translate_as_block(paragraphs)
 
-        # Google: translate each paragraph (avoid char limits)
         return [self.translate(p) for p in paragraphs]
 
+    # ================= FIXED FUNCTION =================
     def _translate_as_block(self, paragraphs: list[str]) -> list[str]:
-    """
-    Join paragraphs, translate as one block, split back.
-    Better context = better translation quality.
-    """
-    if not paragraphs:
-        return []
+        """
+        Join paragraphs → translate → split back
+        """
 
-    if len(paragraphs) == 1:
-        result = self.translate(paragraphs[0])
-        return [result] if result and result.strip() else paragraphs
+        if not paragraphs:
+            return []
 
-    SEP = "\n§§§\n"
-    combined = SEP.join(paragraphs)
+        if len(paragraphs) == 1:
+            result = self.translate(paragraphs[0])
+            return [result] if result and result.strip() else paragraphs
 
-    # Nếu quá dài → translate từng paragraph
-    if len(combined) > 6000:
-        results = []
-        for p in paragraphs:
-            r = self.translate(p)
-            results.append(r if r and r.strip() else p)
-        return results
+        SEP = "\n§§§\n"
+        combined = SEP.join(paragraphs)
 
-    translated = self.translate(combined)
+        if len(combined) > 6000:
+            return [self.translate(p) if p.strip() else p for p in paragraphs]
 
-    # Nếu translate thất bại → trả về original
-    if not translated or not translated.strip():
-        return paragraphs
+        translated = self.translate(combined)
 
-    # Tách lại bằng separator
-    if "§§§" in translated:
-        parts = [p.strip() for p in translated.split("§§§")]
-        parts = [p for p in parts if p]  # Lọc rỗng
+        if not translated or not translated.strip():
+            return paragraphs
+
+        # try split by separator
+        if "§§§" in translated:
+            parts = [p.strip() for p in translated.split("§§§")]
+            parts = [p for p in parts if p]
+
+            if len(parts) == len(paragraphs):
+                return parts
+
+        # fallback split
+        parts = [p.strip() for p in translated.split("\n\n") if p.strip()]
         if len(parts) == len(paragraphs):
             return parts
-        # Số phần không khớp → fallback
-        print(f"[Translator] Split mismatch: expected {len(paragraphs)}, "
-              f"got {len(parts)}")
 
-    # Fallback: split by double newline
-    parts = [p.strip() for p in translated.split("\n\n") if p.strip()]
-    if len(parts) == len(paragraphs):
-        return parts
+        # final fallback
+        return [translated.strip()] + paragraphs[1:]
 
-    # Last resort: gộp tất cả vào 1 block, pad phần còn lại
-    # KHÔNG trả về [""] * n nữa — trả về original cho phần không dịch được
-    result = [translated.strip()]
-    for i in range(1, len(paragraphs)):
-        result.append(paragraphs[i])  # Giữ nguyên bản gốc thay vì string rỗng
-    return result
-
-    def test_backend(self) -> tuple[bool, str]:
-        """Test current backend connection."""
-        if hasattr(self._backend, 'test_connection'):
+    def test_backend(self):
+        if hasattr(self._backend, "test_connection"):
             return self._backend.test_connection()
         return self._backend.is_available(), "OK"
 
-    def get_cache_stats(self) -> dict:
+    def get_cache_stats(self):
         return {
             "size": _cache.size(),
             "max": settings.get("max_cache_size", 500),
@@ -892,11 +864,13 @@ class Translator:
 # Global instance
 _translator: Optional[Translator] = None
 
+
 def get_translator() -> Translator:
     global _translator
     if _translator is None:
         _translator = Translator()
     return _translator
+
 
 def reset_translator():
     """Force re-initialization (call after settings change)."""
