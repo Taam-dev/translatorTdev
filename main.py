@@ -62,7 +62,7 @@ class AppController(QObject):
         self._worker.error_occurred.connect(self._on_pipeline_error)
         self._worker.finished.connect(self._on_pipeline_finished)
 
-        # Thread-safe signals for hotkey callback
+        # Thread-safe signals cho hotkey callback
         self._trigger_signal.connect(
             self._start_selection,
             Qt.ConnectionType.QueuedConnection
@@ -95,7 +95,7 @@ class AppController(QObject):
     # ==================================================
 
     def _on_hotkey_pressed(self):
-        """Called from pynput thread - must use signal."""
+        """Called from pynput thread → dùng signal để về main thread."""
         if self._busy:
             return
         self._trigger_signal.emit()
@@ -110,6 +110,9 @@ class AppController(QObject):
             self._main_window.log("Already processing, please wait.", "warn")
             return
 
+        # Đóng SelectionWindow cũ nếu còn tồn tại
+        self._cleanup_selection_window()
+
         self._main_window.log("Starting region selection...", "info")
 
         try:
@@ -120,15 +123,43 @@ class AppController(QObject):
 
         self._selection_window = SelectionWindow(pixmap)
         self._selection_window.region_selected.connect(self._on_region_selected)
-        self._selection_window.selection_cancelled.connect(self._on_selection_cancelled)
+        self._selection_window.selection_cancelled.connect(
+            self._on_selection_cancelled
+        )
         self._selection_window.showFullScreen()
         self._selection_window.setFocus()
 
+    def _cleanup_selection_window(self):
+        """Safely close và cleanup SelectionWindow cũ."""
+        if self._selection_window is not None:
+            try:
+                # Disconnect signals trước để tránh double-callback
+                try:
+                    self._selection_window.region_selected.disconnect()
+                    self._selection_window.selection_cancelled.disconnect()
+                except RuntimeError:
+                    pass  # Đã disconnect rồi
+
+                self._selection_window.close()
+                self._selection_window.deleteLater()
+            except Exception as e:
+                print(f"[Main] SelectionWindow cleanup error: {e}")
+            finally:
+                self._selection_window = None
+
     def _on_region_selected(self, x: int, y: int, w: int, h: int):
         """User confirmed selection region."""
+        # Validate dimensions
+        if w <= 0 or h <= 0:
+            self._main_window.log(
+                f"Invalid region size: {w}×{h}px — try again", "warn"
+            )
+            return
+
         self._main_window.log(
             f"Region selected: ({x},{y})  {w}×{h}px", "info"
         )
+        self._cleanup_selection_window()  # Clean up sau khi chọn xong
         self._overlay.hide()
         self._capture_region = QRect(x, y, w, h)
         self._busy = True
@@ -137,6 +168,7 @@ class AppController(QObject):
 
     def _on_selection_cancelled(self):
         """User pressed Escape."""
+        self._cleanup_selection_window()
         self._main_window.log("Selection cancelled.", "warn")
         self._main_window.set_status("Cancelled", "warn")
 
@@ -180,20 +212,24 @@ class AppController(QObject):
             region=self._capture_region,
             paragraphs=translated,
         )
-        self._main_window.set_status("Translation shown — click overlay to dismiss", "ok")
+        self._main_window.set_status(
+            "Translation shown — click overlay to dismiss", "ok"
+        )
 
     def _on_pipeline_finished(self):
+        """Luôn được gọi khi pipeline kết thúc (dù success hay error)."""
         self._busy = False
         self._main_window.set_processing(False)
 
     def _on_pipeline_error(self, error: str):
+        """Được emit từ background thread → dùng error_signal."""
         self._error_signal.emit(error)
 
     def _show_error(self, msg: str):
         self._main_window.log(f"ERROR: {msg}", "error")
         self._main_window.set_status(f"Error: {msg}", "error")
-        self._busy = False
-        self._main_window.set_processing(False)
+        # Không set _busy = False ở đây vì finished signal sẽ làm việc đó
+        # Tránh double-reset
 
     # ==================================================
     # SETTINGS
@@ -216,9 +252,15 @@ class AppController(QObject):
         )
 
     def quit(self):
+        """Graceful shutdown."""
+        print("[Main] Shutting down...")
         get_hotkey_manager().stop()
+
         if self._worker:
             self._worker.cancel()
+
+        self._cleanup_selection_window()
+
         self._app.quit()
 
 

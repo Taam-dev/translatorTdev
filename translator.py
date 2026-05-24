@@ -823,37 +823,55 @@ class Translator:
         return [self.translate(p) for p in paragraphs]
 
     def _translate_as_block(self, paragraphs: list[str]) -> list[str]:
-        """
-        Join paragraphs, translate as one block, split back.
-        Better context = better translation quality.
-        """
-        if len(paragraphs) == 1:
-            return [self.translate(paragraphs[0])]
+    """
+    Join paragraphs, translate as one block, split back.
+    Better context = better translation quality.
+    """
+    if not paragraphs:
+        return []
 
-        # Use a clear separator that survives translation
-        SEP = "\n§§§\n"
-        combined = SEP.join(paragraphs)
+    if len(paragraphs) == 1:
+        result = self.translate(paragraphs[0])
+        return [result] if result and result.strip() else paragraphs
 
-        # If too long, translate individually
-        if len(combined) > 6000:
-            return [self.translate(p) for p in paragraphs]
+    SEP = "\n§§§\n"
+    combined = SEP.join(paragraphs)
 
-        translated = self.translate(combined)
+    # Nếu quá dài → translate từng paragraph
+    if len(combined) > 6000:
+        results = []
+        for p in paragraphs:
+            r = self.translate(p)
+            results.append(r if r and r.strip() else p)
+        return results
 
-        # Try to split back by separator
-        if "§§§" in translated:
-            parts = translated.split("§§§")
-            parts = [p.strip() for p in parts if p.strip()]
-            if len(parts) == len(paragraphs):
-                return parts
+    translated = self.translate(combined)
 
-        # Fallback: split by double newline
-        parts = [p.strip() for p in translated.split("\n\n") if p.strip()]
+    # Nếu translate thất bại → trả về original
+    if not translated or not translated.strip():
+        return paragraphs
+
+    # Tách lại bằng separator
+    if "§§§" in translated:
+        parts = [p.strip() for p in translated.split("§§§")]
+        parts = [p for p in parts if p]  # Lọc rỗng
         if len(parts) == len(paragraphs):
             return parts
+        # Số phần không khớp → fallback
+        print(f"[Translator] Split mismatch: expected {len(paragraphs)}, "
+              f"got {len(parts)}")
 
-        # Last resort: return as single block (all in first paragraph)
-        return [translated] + [""] * (len(paragraphs) - 1)
+    # Fallback: split by double newline
+    parts = [p.strip() for p in translated.split("\n\n") if p.strip()]
+    if len(parts) == len(paragraphs):
+        return parts
+
+    # Last resort: gộp tất cả vào 1 block, pad phần còn lại
+    # KHÔNG trả về [""] * n nữa — trả về original cho phần không dịch được
+    result = [translated.strip()]
+    for i in range(1, len(paragraphs)):
+        result.append(paragraphs[i])  # Giữ nguyên bản gốc thay vì string rỗng
+    return result
 
     def test_backend(self) -> tuple[bool, str]:
         """Test current backend connection."""
