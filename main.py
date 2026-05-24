@@ -4,6 +4,9 @@ main.py
 Application entry point for translatorTdev.
 """
 
+import faulthandler
+
+faulthandler.enable()
 import sys
 import os
 
