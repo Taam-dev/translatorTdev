@@ -10,12 +10,13 @@ Designed for reading English web novels, manga, manhwa, comics, games, and subti
 
 - **Global hotkey** capture (works in any app, any window)
 - **Screen freeze + drag selection** for precise region capture
-- **PaddleOCR** for accurate text extraction
-- **Intelligent OCR reconstruction** - fixes broken lines, hyphen splits, OCR errors
-- **Natural translation** via Google Translate (free) or OpenAI GPT
+- **EasyOCR** for accurate text extraction (with PaddleOCR fallback)
+- **Intelligent OCR reconstruction** — fixes broken lines, hyphen splits, OCR errors
+- **5 translation backends** — Google Translate, OpenAI GPT, Ollama, LM Studio, llama.cpp
+- **Local AI support** — translate 100% offline with Ollama or LM Studio
 - **Translation overlay** renders directly on screen over the selected region
 - **Local translation cache** for speed and offline repeat translations
-- **Dark minimal UI** - developer tool aesthetic
+- **Dark minimal UI** — developer tool aesthetic
 - **Vietnamese accent support**
 - **Auto-fit text** in overlay
 
@@ -23,51 +24,52 @@ Designed for reading English web novels, manga, manhwa, comics, games, and subti
 
 ## Requirements
 
-- Windows 10 or 11
-- Python 3.12+
-- Internet connection (for translation)
+- Windows 10 or 11 (64-bit)
+- Python 3.10+
+- Internet connection (for Google / OpenAI backends)
+- For local AI: Ollama or LM Studio installed separately
 
 ---
 
 ## Installation
 
-### 1. Clone or download
+### Option A — Download Release *(No Python needed)*
+
+1. Go to [Releases](https://github.com/Taam-dev/translatorTdev/releases)
+2. Download `TranslatorTdev-v1.0.0-windows.zip`
+3. Extract and run `TranslatorTdev.exe`
+
+> First launch downloads EasyOCR models (~100 MB). Internet required for this step only.
+
+---
+
+### Option B — Run from Source
+
+#### 1. Clone or download
 
 ```bash
-git clone https://github.com/yourname/translatorTdev.git
+git clone https://github.com/YOUR_USERNAME/translatorTdev.git
 cd translatorTdev
 ```
 
-### 2. Create virtual environment (recommended)
+#### 2. Create virtual environment
 
 ```bash
 python -m venv venv
 venv\Scripts\activate
 ```
 
-### 3. Install dependencies
+#### 3. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-> **Note on PaddlePaddle:** If the standard install fails on Windows, try:
-> ```bash
-> pip install paddlepaddle -f https://www.paddlepaddle.org.cn/whl/windows/mkl/avx/stable.html
-> pip install paddleocr
-> ```
-
----
-
-## Running the App
+#### 4. Run
 
 ```bash
 python main.py
 ```
-
-The app launches with a small settings window and registers a global hotkey.
-
-On first launch, PaddleOCR will download model files (~100MB). This only happens once.
 
 ---
 
@@ -75,15 +77,15 @@ On first launch, PaddleOCR will download model files (~100MB). This only happens
 
 ### Basic Workflow
 
-1. Launch `python main.py`
+1. Launch `TranslatorTdev.exe` or `python main.py`
 2. Switch to any app containing text (browser, manga viewer, game, etc.)
 3. Press **Q** (or your configured hotkey)
 4. The screen freezes with a dark overlay
 5. **Click and drag** to select the text region
 6. Press **Enter** to confirm
-7. Wait for OCR (~1-3 seconds)
+7. Wait for OCR + translation (1–5 seconds)
 8. The translated text appears as an overlay
-9. **Click the overlay** or press **ESC** to dismiss
+9. **Click the overlay** or press **Esc** to dismiss
 
 ---
 
@@ -91,93 +93,162 @@ On first launch, PaddleOCR will download model files (~100MB). This only happens
 
 | Key | Action |
 |-----|--------|
-| Q (default) | Activate capture mode |
-| Drag (left mouse) | Select region |
-| Enter | Confirm selection + start OCR |
+| `Q` (default) | Activate capture mode |
+| Left mouse drag | Select region |
+| Enter | Confirm selection → start OCR + translate |
 | Escape | Cancel selection / close overlay |
 | Click overlay | Dismiss translation overlay |
 
-You can change the capture hotkey in Settings → Hotkeys.
+You can change the capture hotkey in **Settings → Hotkeys**.
+
+---
+
+## Translation Backends
+
+### Google Translate *(Default, Free)*
+
+No setup required. Uses the `deep-translator` library.
+
+- Requires internet connection
+- Good quality for most content
+- Rate limits may apply for heavy usage
+
+---
+
+### OpenAI GPT *(Best Quality)*
+
+1. Get an API key from https://platform.openai.com/
+2. Open Settings → Translation Backend → `OpenAI GPT`
+3. Enter your API key in the **API Key** field
+4. Select model (`gpt-4o-mini` recommended for speed and cost)
+
+**Recommended:** `gpt-4o-mini` — fast, cheap, excellent translation quality.
+
+---
+
+### Ollama *(Free Local AI — 100% Offline)*
+
+Ollama runs AI models locally on your machine. No internet needed after setup.
+
+#### Step 1 — Install Ollama
+
+Download and install from https://ollama.ai
+
+#### Step 2 — Pull a translation model
+
+Open a terminal and run:
+
+```bash
+# Best for Vietnamese / Chinese (recommended)
+ollama pull qwen2.5:7b
+
+# Fast, low RAM usage (~4 GB)
+ollama pull gemma3:4b
+
+# Lightweight option (~2 GB)
+ollama pull qwen2.5:3b
+```
+
+> Model download size: 2–9 GB depending on model. Only needed once.
+
+#### Step 3 — Start Ollama server
+
+Ollama starts automatically after installation.
+To verify it is running, open a browser and go to:
+```
+http://localhost:11434
+```
+You should see: `Ollama is running`
+
+#### Step 4 — Configure TranslatorTdev
+
+1. Open TranslatorTdev
+2. Settings → Translation Backend → `Ollama (free local AI)`
+3. Set **Ollama Model** to the model you pulled (e.g. `qwen2.5:7b`)
+4. Click **Test Backend** to verify connection
+
+> **Important:** Ollama must be running before you use the tool.
+> The model must be pulled before selecting it in settings.
+
+#### Recommended models by use case
+
+| Model | Best for | RAM needed | Size |
+|-------|----------|------------|------|
+| `qwen2.5:7b` | Vietnamese, Chinese, general | 6 GB | 4.7 GB |
+| `gemma3:4b` | Fast, low resource | 4 GB | 3.3 GB |
+| `qwen2.5:14b` | Highest quality | 16 GB | 9 GB |
+| `qwen2.5:3b` | Very low resource | 3 GB | 2 GB |
+| `aya:8b` | Multilingual specialist | 8 GB | 5 GB |
+
+---
+
+### LM Studio *(Free Local AI — 100% Offline)*
+
+LM Studio provides a GUI to run GGUF models locally with an OpenAI-compatible API.
+
+#### Step 1 — Install LM Studio
+
+Download from https://lmstudio.ai and install it.
+
+#### Step 2 — Download a model inside LM Studio
+
+1. Open LM Studio
+2. Go to the **Discover** tab
+3. Search for a model (recommended: `Qwen2.5-7B-Instruct-GGUF`)
+4. Click **Download**
+
+#### Step 3 — Start the local server
+
+1. Go to the **Local Server** tab in LM Studio
+2. Select your downloaded model
+3. Click **Start Server**
+4. Server runs at `http://localhost:1234` by default
+
+#### Step 4 — Configure TranslatorTdev
+
+1. Settings → Translation Backend → `LM Studio (free local AI)`
+2. Click **Test Backend** to verify
+
+> **Important:** LM Studio server must be running and a model must be loaded
+> before using the tool.
+
+---
+
+### llama.cpp Server *(Advanced)*
+
+For advanced users running llama.cpp manually.
+
+```bash
+# Start llama.cpp server with your model
+llama-server -m your-model.gguf --port 8080 -c 4096
+```
+
+Then set backend to `llama.cpp server` in settings.
 
 ---
 
 ## OCR Setup
 
-The app uses **PaddleOCR** for text recognition.
+The app uses **EasyOCR** as the primary OCR engine, with PaddleOCR as fallback.
 
 ### Supported OCR Languages
 
 | Language | Setting Code |
 |----------|-------------|
 | English | `en` |
+| Vietnamese + English | `vi` |
 | Chinese (Simplified) | `ch` |
-| Japanese | `japan` |
-| Korean | `korean` |
-| French | `french` |
-| German | `german` |
+| Japanese | `ja` |
+| Korean | `ko` |
+| French | `fr` |
+| German | `de` |
 
-Set the OCR language in Settings → OCR Settings to match your source content.
+Set the OCR language in **Settings → OCR Settings** to match your source content.
 
 ### First Run
 
-On first use, PaddleOCR downloads recognition models. Ensure you have internet access.
-Files are cached in `~/.paddleocr/`.
-
----
-
-## Translation Setup
-
-### Option 1: Google Translate (Default, Free)
-
-No setup required. Uses `deep-translator` library.
-
-Set **Translation Backend** to `Google Translate (Free)` in settings.
-
-**Limitations:**
-- Rate limits apply for heavy usage
-- Quality is good but not as natural as GPT
-
-### Option 2: OpenAI GPT (Best Quality)
-
-For novel-quality, natural translations:
-
-1. Get an API key from https://platform.openai.com/
-2. Open Settings → Translation Backend → `OpenAI GPT`
-3. Enter your API key in the **API Key** field
-4. Select model (`gpt-4o-mini` recommended for speed/cost)
-
-**Recommended model:** `gpt-4o-mini`
-- Fast, cheap, excellent translation quality
-- ~$0.0001 per translation (very low cost)
-
-### Translation Cache
-
-Translations are cached locally in `cache/translation_cache.json`.
-
-- Same text is never translated twice
-- Works offline for previously seen text
-- Cache holds up to 500 entries (configurable in `settings.py`)
-
----
-
-## Settings Reference
-
-All settings saved to `settings.json` in the app directory.
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `source_language` | `en` | Source language code |
-| `target_language` | `vi` | Target language code |
-| `hotkey` | `q` | Global capture hotkey |
-| `font_size` | `16` | Overlay text font size (pt) |
-| `overlay_opacity` | `0.92` | Overlay window opacity (0.3-1.0) |
-| `translation_backend` | `google` | `google` or `openai` |
-| `openai_api_key` | `""` | OpenAI API key |
-| `openai_model` | `gpt-4o-mini` | OpenAI model name |
-| `ocr_language` | `en` | PaddleOCR language |
-| `cache_translations` | `true` | Cache results locally |
-| `cleanup_with_ai` | `false` | Use AI to fix OCR errors |
-| `max_cache_size` | `500` | Max cached translations |
+On first use, EasyOCR downloads recognition models (~100 MB).
+Files are cached in `%USERPROFILE%\.EasyOCR\`.
 
 ---
 
@@ -193,8 +264,8 @@ ful
 
 ### Broken Line Merging
 ```
-I           →    I can't do this
-can't              anymore...
+I           →    I can't do this anymore...
+can't
 do this
 anymore...
 ```
@@ -208,43 +279,68 @@ rn aybe     →    maybe
 
 ---
 
+## Settings Reference
+
+All settings are saved automatically to `settings.json`.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `source_language` | `en` | Language of text on screen |
+| `target_language` | `vi` | Language to translate into |
+| `hotkey` | `q` | Global capture hotkey |
+| `font_size` | `16` | Overlay font size (pt) |
+| `overlay_opacity` | `0.92` | Overlay opacity (0.3–1.0) |
+| `translation_backend` | `google` | Active backend |
+| `translation_style` | `novel` | `novel` / `manga` / `subtitle` / `general` |
+| `openai_api_key` | `""` | OpenAI API key |
+| `openai_model` | `gpt-4o-mini` | OpenAI model |
+| `ollama_host` | `http://localhost:11434` | Ollama server URL |
+| `ollama_model` | `qwen2.5:7b` | Ollama model name |
+| `lmstudio_host` | `http://localhost:1234` | LM Studio server URL |
+| `ocr_language` | `en` | OCR recognition language |
+| `cache_translations` | `true` | Cache results locally |
+| `cleanup_with_ai` | `false` | Use AI to fix OCR errors |
+| `max_cache_size` | `500` | Max cached translations |
+
+---
+
 ## Troubleshooting
 
 ### App doesn't start
-- Ensure Python 3.12+ is installed
+- Ensure Python 3.10+ is installed
 - Run `pip install -r requirements.txt` again
-- Check for import errors: `python -c "import PySide6; import paddleocr"`
+- Check for import errors: `python -c "import PySide6; import easyocr"`
 
 ### Hotkey not working
-- Run the app as Administrator (some apps block hotkeys)
+- Run the app as Administrator
 - Try a different hotkey in Settings
 - Check if another app is consuming the same hotkey
 
 ### OCR is slow
-- First run initializes PaddleOCR (~5-10 seconds)
-- Subsequent runs are faster (~1-3 seconds)
-- PaddleOCR runs on CPU by default for compatibility
+- First run initializes EasyOCR and downloads models
+- Subsequent runs are faster (1–3 seconds)
+- EasyOCR runs on CPU by default for compatibility
 
 ### OCR quality is poor
-- Try selecting a larger region
-- Ensure text is readable (not too small, not blurry)
-- Try the `AI OCR Cleanup` option with an OpenAI key
+- Select a larger region with clearer text
+- Match the OCR language to the text on screen
+- Enable **AI OCR Cleanup** in settings (requires OpenAI key)
 
-### Translation not working
-- Check internet connection (Google backend needs internet)
-- Verify OpenAI API key is correct (if using OpenAI backend)
-- Check the status bar for error messages
+### Ollama not connecting
+- Make sure Ollama is installed and running
+- Open `http://localhost:11434` in a browser — should show `Ollama is running`
+- Make sure you have pulled the model: `ollama pull qwen2.5:7b`
+- Click **Test Backend** in settings to diagnose
 
-### Overlay text is too small/large
-- Adjust **Font Size** in Settings
-- The overlay auto-shrinks text if it doesn't fit
+### LM Studio not connecting
+- Make sure LM Studio is open and the **Local Server** is started
+- A model must be loaded in the server tab before connecting
+- Check that the server port matches (`1234` by default)
 
-### PaddleOCR installation fails
-```bash
-# Try CPU-only version explicitly
-pip install paddlepaddle==2.5.0 -i https://pypi.tuna.tsinghua.edu.cn/simple
-pip install paddleocr
-```
+### Translation overlay not showing
+- Make sure the selected region contains readable text
+- Check the log panel in the settings window for error details
+- Try switching to Google Translate to isolate if it is an OCR or translation issue
 
 ### Vietnamese characters not rendering
 - The app uses Segoe UI which supports Vietnamese on Windows 10/11
@@ -252,76 +348,50 @@ pip install paddleocr
 
 ---
 
-## Building Executable (.exe)
-
-### Install PyInstaller
-
-```bash
-pip install pyinstaller
-```
-
-### Build Command
-
-```bash
-pyinstaller ^
-  --onefile ^
-  --windowed ^
-  --name translatorTdev ^
-  --add-data "settings.json;." ^
-  --hidden-import paddleocr ^
-  --hidden-import paddle ^
-  --hidden-import pynput ^
-  --hidden-import deep_translator ^
-  main.py
-```
-
-### Output
-
-The executable will be in `dist/translatorTdev.exe`.
-
-### Portable Distribution
-
-Copy the following to a distribution folder:
-```
-dist/translatorTdev.exe
-cache/  (empty directory)
-README.md
-```
-
----
-
 ## Project Structure
 
 ```
 translatorTdev/
-├── main.py           # App entry point, orchestration
-├── overlay.py        # Translation overlay window
-├── capture.py        # Screen capture (mss)
-├── ocr.py            # PaddleOCR wrapper
-├── cleanup.py        # OCR text reconstruction + AI cleanup
-├── translator.py     # Translation backends + caching
-├── renderer.py       # Async pipeline worker
-├── settings.py       # Settings management
-├── hotkeys.py        # Global hotkey listener
+├── main.py                  # Entry point & app controller
+├── renderer.py              # Async OCR → Translate pipeline
+├── ocr.py                   # OCR engine (EasyOCR / PaddleOCR)
+├── capture.py               # Screen capture (mss)
+├── overlay.py               # Translation overlay window
+├── translator.py            # All translation backends
+├── cleanup.py               # OCR text reconstruction
+├── hotkeys.py               # Global hotkey manager (pynput)
+├── settings.py              # Settings load / save
 ├── ui/
-│   ├── __init__.py
-│   ├── main_window.py       # Settings window
-│   └── selection_window.py  # Screen freeze + region selector
-├── cache/
-│   └── translation_cache.json  (auto-created)
-├── settings.json       (auto-created on first run)
-├── requirements.txt
-└── README.md
+│   ├── main_window.py       # Main settings window
+│   ├── selection_window.py  # Fullscreen region selector
+│   └── local_ai_dialog.py   # Local AI setup dialog
+├── assets/                  # Icons and background images
+├── cache/                   # Local translation cache
+└── requirements.txt         # Python dependencies
 ```
 
 ---
 
 ## Architecture Notes
 
-- **Thread safety:** OCR and translation run in a background thread. Qt signals/slots (QueuedConnection) are used for all UI updates from the background thread.
-- **No continuous OCR:** OCR only runs when user explicitly captures a region. Zero background CPU usage.
-- **Lazy initialization:** PaddleOCR initializes only on first use to keep startup fast.
-- **Cache:** Translation cache persists between sessions.
+- **Thread safety:** OCR and translation run in a background thread. Qt signals with `QueuedConnection` handle all UI updates from background threads safely.
+- **No continuous OCR:** OCR only runs when the user explicitly captures a region. Zero background CPU usage.
+- **Lazy initialization:** EasyOCR initializes only on first use to keep startup fast.
+- **Persistent cache:** Translation cache survives between sessions.
+
+---
+
+## Changelog
+
+### v1.0.0
+- 🎉 Initial public release
+- ✅ EasyOCR as primary engine with PaddleOCR fallback
+- ✅ 5 translation backends (Google, OpenAI, Ollama, LM Studio, llama.cpp)
+- ✅ Thread-safe pipeline — no UI freezes or crashes
+- ✅ Configurable overlay (font, opacity, colors)
+- ✅ Persistent translation cache
+- ✅ Global hotkey via pynput
+- ✅ Minimize to system tray
 
 ---
 
