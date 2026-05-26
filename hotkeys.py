@@ -42,12 +42,13 @@ class HotkeyManager:
 
         self._active = True
         self._listener = pynput_keyboard.Listener(
-            on_press=self._on_press,
-            on_release=self._on_release
+            on_press=self._on_press, on_release=self._on_release
         )
         self._listener.daemon = True
         self._listener.start()
-        print(f"[Hotkeys] Global hotkey listener started. Hotkey: {self._hotkey.upper()}")
+        print(
+            f"[Hotkeys] Global hotkey listener started. Hotkey: {self._hotkey.upper()}"
+        )
 
     def stop(self):
         """Stop the hotkey listener."""

@@ -38,9 +38,7 @@ def capture_region(x: int, y: int, width: int, height: int) -> Image.Image:
         screenshot = sct.grab(monitor)
         # Convert mss screenshot to PIL Image
         img = Image.frombytes(
-            "RGB",
-            (screenshot.width, screenshot.height),
-            screenshot.rgb
+            "RGB", (screenshot.width, screenshot.height), screenshot.rgb
         )
 
     return img
@@ -60,9 +58,7 @@ def capture_full_screen(monitor_index: int = 1) -> Image.Image:
         monitor = sct.monitors[monitor_index]
         screenshot = sct.grab(monitor)
         img = Image.frombytes(
-            "RGB",
-            (screenshot.width, screenshot.height),
-            screenshot.rgb
+            "RGB", (screenshot.width, screenshot.height), screenshot.rgb
         )
     return img
 
