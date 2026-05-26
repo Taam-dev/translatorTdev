@@ -35,24 +35,37 @@ DEFAULT_SETTINGS = {
 }
 
 
-def _get_base_dir() -> Path:
+def get_resource_path(relative_path: str) -> Path:
     """
-    Trả về base directory đúng cả khi chạy từ source lẫn từ .exe
-    PyInstaller set sys.frozen = True và sys._MEIPASS khi đóng gói
+    Trả về đường dẫn đúng cả khi chạy từ source lẫn từ .exe
+    PyInstaller extract files vào sys._MEIPASS khi chạy
     """
-    if getattr(sys, "frozen", False):
-        # Chạy từ .exe → dùng thư mục chứa .exe
-        return Path(sys.executable).parent
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        # Chạy từ .exe → files được extract vào _MEIPASS
+        base = Path(sys._MEIPASS)
     else:
-        # Chạy từ source → dùng thư mục chứa settings.py
-        return Path(os.path.dirname(os.path.abspath(__file__)))
+        # Chạy từ source
+        base = Path(os.path.dirname(os.path.abspath(__file__)))
+    return base / relative_path
+
+
+def _get_base_dir() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).parent
+    return Path(os.path.dirname(os.path.abspath(__file__)))
 
 
 BASE_DIR = _get_base_dir()
 SETTINGS_DIR = BASE_DIR
 SETTINGS_FILE = BASE_DIR / "settings.json"
 CACHE_DIR = BASE_DIR / "cache"
-ASSETS_DIR = BASE_DIR / "assets"
+
+# ASSETS_DIR phải trỏ vào _MEIPASS khi chạy exe
+# vì assets được bundle vào bên trong exe
+if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+    ASSETS_DIR = Path(sys._MEIPASS) / "assets"
+else:
+    ASSETS_DIR = Path(os.path.dirname(os.path.abspath(__file__))) / "assets"
 
 
 class Settings:

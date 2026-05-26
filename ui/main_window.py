@@ -54,26 +54,29 @@ def get_asset(name: str) -> str:
 
 
 def get_icon() -> QIcon:
-    for fname in ("icon.ico", "icon.png"):
-        path = get_asset(fname)
+    """Load app icon - works both from source and .exe"""
+    # Thử theo thứ tự ưu tiên
+    candidates = [
+        get_asset("icon.ico"),
+        get_asset("icon.png"),
+    ]
+    for path in candidates:
         if os.path.exists(path):
-            return QIcon(path)
-    try:
-        assets_script = ASSETS_DIR / "generate_assets.py"
-        if assets_script.exists():
-            import importlib.util
+            icon = QIcon(path)
+            if not icon.isNull():
+                return icon
 
-            spec = importlib.util.spec_from_file_location(
-                "generate_assets", assets_script
-            )
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            mod.generate_icon()
-            ico = get_asset("icon.ico")
-            if os.path.exists(ico):
-                return QIcon(ico)
-    except Exception as e:
-        print(f"[Assets] Icon generation failed: {e}")
+    # Fallback: thử load trực tiếp từ _MEIPASS nếu đang chạy exe
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        import sys as _sys
+
+        for fname in ("icon.ico", "icon.png"):
+            path = os.path.join(_sys._MEIPASS, "assets", fname)
+            if os.path.exists(path):
+                icon = QIcon(path)
+                if not icon.isNull():
+                    return icon
+
     return QIcon()
 
 
