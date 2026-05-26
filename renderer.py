@@ -14,12 +14,15 @@ import time
 from typing import Optional
 
 from PySide6.QtCore import QObject, Signal
-
 from capture import capture_region
 from ocr import run_ocr
 from cleanup import reconstruct_ocr_text
 from translator import get_translator
 from settings import settings
+
+import logging
+
+log = logging.getLogger("pipeline")
 
 
 class TranslationWorker(QObject):

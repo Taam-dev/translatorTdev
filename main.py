@@ -5,6 +5,9 @@ Application entry point for translatorTdev.
 Compatible với cả .py script và PyInstaller --windowed exe.
 """
 
+import faulthandler
+
+faulthandler.enable()
 import sys
 import os
 
@@ -331,10 +334,12 @@ class AppController(QObject):
         self._main_window.set_status("Done — click overlay to dismiss", "ok")
 
     def _on_pipeline_finished(self):
+        """Luôn được gọi khi pipeline kết thúc (dù success hay error)."""
         self._busy = False
         self._main_window.set_processing(False)
 
     def _on_pipeline_error(self, error: str):
+        """Được emit từ background thread → dùng error_signal."""
         self._error_signal.emit(error)
 
     def _show_error(self, msg: str):

@@ -10,62 +10,47 @@ from pathlib import Path
 DEFAULT_SETTINGS = {
     "source_language": "en",
     "target_language": "vi",
+    # Hotkey
     "hotkey": "q",
+    # Overlay
     "font_size": 16,
     "overlay_opacity": 0.92,
     "overlay_bg_color": "#0f0f1e",
     "overlay_text_color": "#e8e8e8",
+    # Translation backend
+    # Options: "google", "openai", "ollama", "lmstudio", "llamacpp"
     "translation_backend": "google",
-    "translation_style": "novel",
+    "translation_style": "novel",  # "novel", "manga", "subtitle", "general"
+    # OpenAI
     "openai_api_key": "",
     "openai_model": "gpt-4o-mini",
+    # Ollama (local AI)
     "ollama_host": "http://localhost:11434",
     "ollama_model": "qwen2.5:7b",
+    # LM Studio (local AI)
     "lmstudio_host": "http://localhost:1234",
     "lmstudio_model": "local-model",
+    # llama.cpp server (local AI)
     "llamacpp_host": "http://localhost:8080",
+    # OCR
     "ocr_language": "en",
+    # Cache
     "cache_translations": True,
     "max_cache_size": 500,
+    # Cleanup
     "cleanup_with_ai": False,
+    # Background
     "custom_background": "",
     "use_custom_background": False,
     "background_opacity": 0.35,
+    # Misc
     "auto_start": False,
 }
 
-
-def get_resource_path(relative_path: str) -> Path:
-    """
-    Trả về đường dẫn đúng cả khi chạy từ source lẫn từ .exe
-    PyInstaller extract files vào sys._MEIPASS khi chạy
-    """
-    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-        # Chạy từ .exe → files được extract vào _MEIPASS
-        base = Path(sys._MEIPASS)
-    else:
-        # Chạy từ source
-        base = Path(os.path.dirname(os.path.abspath(__file__)))
-    return base / relative_path
-
-
-def _get_base_dir() -> Path:
-    if getattr(sys, "frozen", False):
-        return Path(sys.executable).parent
-    return Path(os.path.dirname(os.path.abspath(__file__)))
-
-
-BASE_DIR = _get_base_dir()
-SETTINGS_DIR = BASE_DIR
-SETTINGS_FILE = BASE_DIR / "settings.json"
-CACHE_DIR = BASE_DIR / "cache"
-
-# ASSETS_DIR phải trỏ vào _MEIPASS khi chạy exe
-# vì assets được bundle vào bên trong exe
-if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-    ASSETS_DIR = Path(sys._MEIPASS) / "assets"
-else:
-    ASSETS_DIR = Path(os.path.dirname(os.path.abspath(__file__))) / "assets"
+SETTINGS_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
+SETTINGS_FILE = SETTINGS_DIR / "settings.json"
+CACHE_DIR = SETTINGS_DIR / "cache"
+ASSETS_DIR = SETTINGS_DIR / "assets"
 
 
 class Settings:

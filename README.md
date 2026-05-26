@@ -1,12 +1,22 @@
-# translatorTdev
+<div align="center">
 
-A fast, minimal OCR screen translator overlay for Windows.
+# 🌐 TranslatorTdev
 
-Designed for reading English web novels, manga, manhwa, comics, games, and subtitles.
+**Real-time screen translation tool**  
+Capture any screen region → OCR → Translate → Display overlay
+
+[![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python)](https://python.org)
+[![PySide6](https://img.shields.io/badge/PySide6-6.x-green?logo=qt)](https://doc.qt.io/qtforpython/)
+[![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/YOUR_USERNAME/translatorTdev)](https://github.com/YOUR_USERNAME/translatorTdev/releases)
+
+![Demo](assets/demo.gif)
+
+</div>
 
 ---
 
-## Features
+## ✨ Features
 
 - **Global hotkey** capture (works in any app, any window)
 - **Screen freeze + drag selection** for precise region capture
@@ -22,7 +32,7 @@ Designed for reading English web novels, manga, manhwa, comics, games, and subti
 
 ---
 
-## Requirements
+## 🚀 Quick Start
 
 - Windows 10 or 11 (64-bit)
 - Python 3.10+
@@ -47,35 +57,55 @@ Designed for reading English web novels, manga, manhwa, comics, games, and subti
 
 #### 1. Clone or download
 
+### Option B: Run from Source
 ```bash
 git clone https://github.com/YOUR_USERNAME/translatorTdev.git
 cd translatorTdev
-```
 
 #### 2. Create virtual environment
 
 ```bash
 python -m venv venv
 venv\Scripts\activate
-```
 
 #### 3. Install dependencies
 
 ```bash
 pip install -r requirements.txt
-```
 
 #### 4. Run
 
 ```bash
 python main.py
-```
+📖 How to Use
+text
 
 ---
 
-## Usage
+# Lightweight
+ollama pull qwen2.5:3b
+Settings (settings.json)
+JSON
 
-### Basic Workflow
+{
+  "hotkey": "q",
+  "source_language": "en",
+  "target_language": "vi",
+  "translation_backend": "google",
+  "ocr_language": "en",
+  "font_size": 16,
+  "overlay_opacity": 0.92,
+  "overlay_bg_color": "#1a1a2e",
+  "overlay_text_color": "#e8e8e8",
+  "cache_translations": true
+}
+📦 Requirements
+Windows 10/11 (64-bit)
+Python 3.10+ (source only)
+~500MB disk space (EasyOCR models)
+RAM: 4GB minimum, 8GB recommended
+🔧 Troubleshooting
+OCR not detecting text?
 
 1. Launch `TranslatorTdev.exe` or `python main.py`
 2. Switch to any app containing text (browser, manga viewer, game, etc.)
@@ -87,9 +117,15 @@ python main.py
 8. The translated text appears as an overlay
 9. **Click the overlay** or press **Esc** to dismiss
 
----
+First run downloads EasyOCR models (~100MB)
+Local AI (Ollama) needs model loaded in RAM
+Switch to Google Translate for fastest results
+App crashes?
 
-## Hotkeys
+Check crash.log in app folder
+Make sure you're using the correct Python version
+Try reinstalling: pip install -r requirements.txt --force-reinstall
+Hotkey not working?
 
 | Key | Action |
 |-----|--------|
@@ -370,7 +406,13 @@ translatorTdev/
 └── requirements.txt         # Python dependencies
 ```
 
----
+Fork the repo
+Create feature branch: git checkout -b feature/amazing-feature
+Commit: git commit -m 'Add amazing feature'
+Push: git push origin feature/amazing-feature
+Open Pull Request
+📄 License
+MIT License — see LICENSE for details.
 
 ## Architecture Notes
 

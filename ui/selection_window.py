@@ -1,33 +1,21 @@
 """
 ui/selection_window.py
 ----------------------
-The screen freeze and region selection overlay window.
-
-When activated:
-1. Takes a screenshot of the full screen
-2. Shows it as a frozen overlay
-3. Allows user to drag-select a rectangle
-4. Returns the selected region on Enter
-5. Cancels on Escape
+Screen freeze và region selection overlay window.
 """
 
-from PySide6.QtWidgets import QWidget, QApplication, QRubberBand
-from PySide6.QtCore import (
-    Qt, QRect, QPoint, QSize, Signal, QTimer
-)
-from PySide6.QtGui import (
-    QPainter, QPixmap, QColor, QFont, QPen, QBrush, QScreen, QCursor
-)
-import sys
+from PySide6.QtWidgets import QWidget, QApplication
+from PySide6.QtCore import Qt, QRect, QPoint, Signal, QTimer
+from PySide6.QtGui import QPainter, QPixmap, QColor, QFont, QPen, QBrush, QCursor
 
 
 class SelectionWindow(QWidget):
     """
-    Full-screen overlay window for region selection.
+    Full-screen overlay cho phép user kéo chọn vùng màn hình.
 
     Signals:
-        region_selected(x, y, width, height): Emitted when user confirms selection
-        selection_cancelled(): Emitted when user presses Escape
+        region_selected(x, y, w, h): User xác nhận vùng chọn
+        selection_cancelled():       User nhấn Escape
     """
 
     region_selected = Signal(int, int, int, int)
@@ -41,127 +29,122 @@ class SelectionWindow(QWidget):
         self._end_point = QPoint()
         self._selecting = False
         self._selection_rect = QRect()
-        self._confirmed = False
+
+        # Flag chống double-emit
+        self._signal_emitted = False
 
         self._setup_window()
-        self._setup_ui()
 
     def _setup_window(self):
-        """Configure the window to be a full-screen overlay."""
-        # Get the full virtual desktop geometry (all monitors)
+        """Configure full-screen overlay window."""
         screen = QApplication.primaryScreen()
         geometry = screen.virtualGeometry()
 
         self.setWindowFlags(
-            Qt.WindowType.FramelessWindowHint |
-            Qt.WindowType.WindowStaysOnTopHint |
-            Qt.WindowType.Tool |
-            Qt.WindowType.X11BypassWindowManagerHint
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.Tool
+            | Qt.WindowType.X11BypassWindowManagerHint
         )
+
+        # QUAN TRỌNG: KHÔNG dùng WA_DeleteOnClose
+        # vì main.py cần giữ reference để cleanup đúng cách
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
-        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+
         self.setGeometry(geometry)
         self.setCursor(QCursor(Qt.CursorShape.CrossCursor))
-
-    def _setup_ui(self):
-        """No child widgets needed - everything drawn in paintEvent."""
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
+    # --------------------------------------------------
+    # EVENTS
+    # --------------------------------------------------
+
     def showEvent(self, event):
-        """Ensure we receive keyboard events."""
         super().showEvent(event)
         self.setFocus()
         self.activateWindow()
         self.raise_()
 
+    def closeEvent(self, event):
+        """Override để không bị xóa bất ngờ."""
+        # Chỉ cho phép close sau khi signal đã emit xong
+        event.accept()
+
     def paintEvent(self, event):
-        """Paint the frozen screenshot with dark overlay and selection rectangle."""
+        """Vẽ screenshot + overlay tối + selection rect."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        # Draw the frozen screenshot as background
+        # 1. Background: frozen screenshot
         painter.drawPixmap(0, 0, self._screenshot)
 
-        # Draw dark semi-transparent overlay over entire screen
+        # 2. Dark overlay toàn màn hình
         painter.fillRect(self.rect(), QColor(0, 0, 0, 120))
 
-        # Draw instruction text
+        # 3. Instruction bar
         self._draw_instructions(painter)
 
-        # If actively selecting or selection made, draw the rectangle
-        if not self._selection_rect.isNull() and self._selection_rect.isValid():
+        # 4. Selection rectangle (nếu có)
+        if self._selection_rect.isValid() and not self._selection_rect.isNull():
             self._draw_selection(painter)
 
+        painter.end()
+
     def _draw_instructions(self, painter: QPainter):
-        """Draw user instruction text at top of screen."""
-        painter.save()
+        """Vẽ thanh hướng dẫn phía trên."""
+        bar = QRect(0, 0, self.width(), 40)
+        painter.fillRect(bar, QColor(20, 20, 30, 200))
 
-        # Background for instructions
-        instruction_rect = QRect(0, 0, self.width(), 40)
-        painter.fillRect(instruction_rect, QColor(20, 20, 30, 200))
-
-        # Instruction text
         painter.setPen(QColor(200, 200, 200))
-        font = QFont("Segoe UI", 11)
-        painter.setFont(font)
+        painter.setFont(QFont("Segoe UI", 11))
 
-        if self._selection_rect.isNull() or not self._selection_rect.isValid():
-            text = "Drag to select region  |  ENTER: Confirm  |  ESC: Cancel"
+        if not self._selection_rect.isValid():
+            text = "Kéo để chọn vùng  |  ENTER: Dịch  |  ESC: Huỷ"
         else:
-            w = abs(self._selection_rect.width())
-            h = abs(self._selection_rect.height())
+            w = self._selection_rect.normalized().width()
+            h = self._selection_rect.normalized().height()
             text = (
-                f"Selection: {w}x{h}px  |  "
-                "ENTER: Translate  |  ESC: Cancel  |  Drag again to reselect"
+                f"Đã chọn: {w}×{h}px  |  "
+                "ENTER: Dịch  |  ESC: Huỷ  |  Kéo lại để chọn lại"
             )
 
-        painter.drawText(
-            instruction_rect,
-            Qt.AlignmentFlag.AlignCenter,
-            text
-        )
-        painter.restore()
+        painter.drawText(bar, Qt.AlignmentFlag.AlignCenter, text)
 
     def _draw_selection(self, painter: QPainter):
-        """Draw the selection rectangle with handles."""
-        painter.save()
-
+        """Vẽ selection rectangle với viền sáng."""
         rect = self._selection_rect.normalized()
 
-        # Clear the overlay inside selection (show original screenshot)
+        # Xoá overlay tối trong vùng chọn → thấy rõ nội dung gốc
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
         painter.fillRect(rect, QColor(0, 0, 0, 0))
-        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
 
-        # Redraw screenshot in selection area (clear view)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
+        # Redraw screenshot trong vùng chọn
         painter.drawPixmap(rect, self._screenshot, rect)
 
-        # Draw selection border
-        pen = QPen(QColor(100, 180, 255), 2, Qt.PenStyle.SolidLine)
-        painter.setPen(pen)
+        # Viền xanh
+        painter.setPen(QPen(QColor(100, 180, 255), 2, Qt.PenStyle.SolidLine))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawRect(rect)
 
-        # Draw corner handles
-        handle_size = 8
-        handle_color = QColor(100, 180, 255)
-        painter.setBrush(QBrush(handle_color))
+        # Corner handles
         painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QBrush(QColor(100, 180, 255)))
+        sz = 8
+        for corner in [
+            rect.topLeft(),
+            rect.topRight(),
+            rect.bottomLeft(),
+            rect.bottomRight(),
+        ]:
+            painter.drawRect(corner.x() - sz // 2, corner.y() - sz // 2, sz, sz)
 
-        corners = [
-            rect.topLeft(), rect.topRight(),
-            rect.bottomLeft(), rect.bottomRight()
-        ]
-        for corner in corners:
-            painter.drawRect(
-                corner.x() - handle_size // 2,
-                corner.y() - handle_size // 2,
-                handle_size, handle_size
-            )
-
-        painter.restore()
+    # --------------------------------------------------
+    # MOUSE
+    # --------------------------------------------------
 
     def mousePressEvent(self, event):
-        """Start selection on left mouse button press."""
         if event.button() == Qt.MouseButton.LeftButton:
             self._start_point = event.position().toPoint()
             self._end_point = self._start_point
@@ -170,14 +153,12 @@ class SelectionWindow(QWidget):
             self.update()
 
     def mouseMoveEvent(self, event):
-        """Update selection rectangle while dragging."""
         if self._selecting:
             self._end_point = event.position().toPoint()
             self._selection_rect = QRect(self._start_point, self._end_point)
             self.update()
 
     def mouseReleaseEvent(self, event):
-        """Finalize rectangle on mouse release."""
         if event.button() == Qt.MouseButton.LeftButton and self._selecting:
             self._end_point = event.position().toPoint()
             self._selection_rect = QRect(
@@ -186,58 +167,79 @@ class SelectionWindow(QWidget):
             self._selecting = False
             self.update()
 
+    # --------------------------------------------------
+    # KEYBOARD
+    # --------------------------------------------------
+
     def keyPressEvent(self, event):
-        """Handle keyboard shortcuts."""
-        if event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
+        key = event.key()
+        if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             self._confirm_selection()
-        elif event.key() == Qt.Key.Key_Escape:
+        elif key == Qt.Key.Key_Escape:
             self._cancel_selection()
         else:
             super().keyPressEvent(event)
 
+    # --------------------------------------------------
+    # ACTIONS
+    # --------------------------------------------------
+
     def _confirm_selection(self):
-        """Confirm the current selection and emit signal."""
-        if self._selection_rect.isNull() or not self._selection_rect.isValid():
+        """Xác nhận vùng chọn."""
+        # Chống double-emit
+        if self._signal_emitted:
+            return
+
+        if not self._selection_rect.isValid():
             return
 
         rect = self._selection_rect.normalized()
 
+        # Vùng quá nhỏ → bỏ qua
         if rect.width() < 10 or rect.height() < 10:
-            return  # Too small, ignore
+            return
 
-        self._confirmed = True
+        self._signal_emitted = True
+
+        # 1. Ẩn window TRƯỚC
         self.hide()
 
-        # Emit the selected region coordinates
-        self.region_selected.emit(
-            rect.x(), rect.y(),
-            rect.width(), rect.height()
+        # 2. Emit signal SAU KHI đã ẩn
+        # Dùng QTimer để đảm bảo hide() xử lý xong trước khi signal chạy
+        QTimer.singleShot(
+            50,  # 50ms delay đủ để Qt xử lý hide event
+            lambda: self.region_selected.emit(
+                rect.x(), rect.y(), rect.width(), rect.height()
+            ),
         )
-        self.close()
 
     def _cancel_selection(self):
-        """Cancel selection and close window."""
+        """Huỷ selection."""
+        if self._signal_emitted:
+            return
+
+        self._signal_emitted = True
         self.hide()
-        self.selection_cancelled.emit()
-        self.close()
+
+        QTimer.singleShot(50, self.selection_cancelled.emit)
+
+
+# --------------------------------------------------
+# SCREENSHOT UTILITY
+# --------------------------------------------------
 
 
 def take_qt_screenshot() -> QPixmap:
     """
-    Capture the entire virtual screen as a QPixmap.
-    Uses Qt's screen grab for compatibility.
+    Chụp toàn bộ virtual screen.
 
     Returns:
-        QPixmap of the full screen
+        QPixmap của toàn màn hình
     """
     screen = QApplication.primaryScreen()
-    # Grab the entire virtual desktop
     virtual_geo = screen.virtualGeometry()
+
     pixmap = screen.grabWindow(
-        0,
-        virtual_geo.x(),
-        virtual_geo.y(),
-        virtual_geo.width(),
-        virtual_geo.height()
+        0, virtual_geo.x(), virtual_geo.y(), virtual_geo.width(), virtual_geo.height()
     )
     return pixmap
