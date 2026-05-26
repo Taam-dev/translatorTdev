@@ -16,25 +16,38 @@ import threading
 from pathlib import Path
 
 from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QComboBox, QSpinBox, QPushButton,
-    QLineEdit, QCheckBox, QGroupBox, QFormLayout,
-    QStatusBar, QSystemTrayIcon, QMenu, QApplication,
-    QSlider, QFrame, QSizePolicy, QPlainTextEdit,
-    QScrollArea, QFileDialog
+    QMainWindow,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QComboBox,
+    QSpinBox,
+    QPushButton,
+    QLineEdit,
+    QCheckBox,
+    QGroupBox,
+    QFormLayout,
+    QStatusBar,
+    QSystemTrayIcon,
+    QMenu,
+    QApplication,
+    QSlider,
+    QFrame,
+    QSizePolicy,
+    QPlainTextEdit,
+    QScrollArea,
+    QFileDialog,
 )
 from PySide6.QtCore import Qt, Signal, QTimer, QDateTime
-from PySide6.QtGui import (
-    QIcon, QFont, QAction, QTextCursor,
-    QPainter, QPixmap, QColor
-)
+from PySide6.QtGui import QIcon, QFont, QAction, QTextCursor, QPainter, QPixmap, QColor
 
 from settings import settings, ASSETS_DIR, SETTINGS_DIR
-
 
 # ==================================================
 # ASSET HELPERS
 # ==================================================
+
 
 def get_asset(name: str) -> str:
     return str(ASSETS_DIR / name)
@@ -49,8 +62,11 @@ def get_icon() -> QIcon:
         assets_script = ASSETS_DIR / "generate_assets.py"
         if assets_script.exists():
             import importlib.util
-            spec = importlib.util.spec_from_file_location("generate_assets", assets_script)
-            mod  = importlib.util.module_from_spec(spec)
+
+            spec = importlib.util.spec_from_file_location(
+                "generate_assets", assets_script
+            )
+            mod = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(mod)
             mod.generate_icon()
             ico = get_asset("icon.ico")
@@ -351,6 +367,7 @@ QLabel#hotkey_display {
 # BACKGROUND WIDGET
 # ==================================================
 
+
 class BackgroundWidget(QWidget):
     """
     Central widget that renders a custom background image
@@ -390,6 +407,7 @@ class BackgroundWidget(QWidget):
             assets_script = ASSETS_DIR / "generate_assets.py"
             if assets_script.exists():
                 import importlib.util
+
                 spec = importlib.util.spec_from_file_location(
                     "generate_assets", assets_script
                 )
@@ -421,7 +439,8 @@ class BackgroundWidget(QWidget):
         if self._bg_pixmap and not self._bg_pixmap.isNull():
             painter.setOpacity(self._bg_opacity)
             scaled = self._bg_pixmap.scaled(
-                w, h,
+                w,
+                h,
                 Qt.AspectRatioMode.KeepAspectRatioByExpanding,
                 Qt.TransformationMode.SmoothTransformation,
             )
@@ -440,18 +459,19 @@ class BackgroundWidget(QWidget):
 # LOG PANEL
 # ==================================================
 
+
 class LogPanel(QPlainTextEdit):
     """Color-coded, auto-scrolling log display."""
 
     MAX_LINES = 300
 
     LEVELS = {
-        "info":  ("·", "#505075"),
-        "ok":    ("✓", "#3a8a5a"),
-        "warn":  ("!", "#8a7a30"),
+        "info": ("·", "#505075"),
+        "ok": ("✓", "#3a8a5a"),
+        "warn": ("!", "#8a7a30"),
         "error": ("✗", "#8a3a3a"),
         "debug": ("·", "#383855"),
-        "ocr":   ("◎", "#305a8a"),
+        "ocr": ("◎", "#305a8a"),
         "trans": ("→", "#305a6a"),
     }
 
@@ -471,10 +491,7 @@ class LogPanel(QPlainTextEdit):
         ts = QDateTime.currentDateTime().toString("HH:mm:ss")
         icon, color = self.LEVELS.get(level, ("·", "#505075"))
 
-        msg = (message
-               .replace("&", "&amp;")
-               .replace("<", "&lt;")
-               .replace(">", "&gt;"))
+        msg = message.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
         html = (
             f'<span style="color:#252540;">[{ts}]</span> '
@@ -491,34 +508,85 @@ class LogPanel(QPlainTextEdit):
 # STDOUT REDIRECTOR
 # ==================================================
 
+# ==================================================
+# THREAD-SAFE STDOUT REDIRECTOR
+# ==================================================
+
+from PySide6.QtCore import QObject, Signal as QtSignal
+
+
+class _LogBridge(QObject):
+    """
+    Bridge object sống trên main thread.
+    Nhận log từ bất kỳ thread nào qua signal → update GUI an toàn.
+    """
+
+    log_signal = QtSignal(str, str)  # message, level
+
+    def __init__(self, log_panel: "LogPanel"):
+        super().__init__()
+        self._log = log_panel
+        # QueuedConnection → luôn chạy trên main thread
+        self.log_signal.connect(self._on_log, Qt.ConnectionType.QueuedConnection)
+
+    def _on_log(self, message: str, level: str):
+        """Chỉ được gọi trên main thread."""
+        try:
+            self._log.append_log(message, level)
+        except Exception:
+            pass
+
+    def emit_log(self, message: str, level: str):
+        """Gọi từ bất kỳ thread nào — an toàn."""
+        try:
+            self.log_signal.emit(message, level)
+        except Exception:
+            pass
+
+
 class SafeStdoutRedirector:
     """
-    Redirects print() to LogPanel safely.
-    Never crashes the app even if log panel is gone.
+    Redirect print() → LogPanel an toàn từ mọi thread.
+
+    Flow:
+      Thread bất kỳ → print() → write() → emit Qt signal
+      → Qt tự route về main thread (QueuedConnection)
+      → main thread update GUI → KHÔNG CRASH
     """
 
-    def __init__(self, log_panel: LogPanel):
-        self._log  = log_panel
+    def __init__(self, log_panel: "LogPanel"):
         self._real = sys.__stdout__
-        self._buf  = ""
+        self._buf = ""
+        self._lock = threading.Lock()
+        self._bridge = _LogBridge(log_panel)
 
     def write(self, text: str):
+        # 1. Luôn ghi ra real stdout (console) trước
         try:
             self._real.write(text)
             self._real.flush()
         except Exception:
             pass
 
+        # 2. Buffer → tách dòng → emit signal (thread-safe)
         try:
             if not isinstance(text, str):
                 text = str(text)
-            self._buf += text
-            while "\n" in self._buf:
-                idx  = self._buf.index("\n")
-                line = self._buf[:idx].strip()
-                self._buf = self._buf[idx + 1:]
-                if line:
-                    self._log.append_log(line, self._classify(line))
+
+            lines_to_emit = []
+            with self._lock:
+                self._buf += text
+                while "\n" in self._buf:
+                    idx = self._buf.index("\n")
+                    line = self._buf[:idx].strip()
+                    self._buf = self._buf[idx + 1 :]
+                    if line:
+                        lines_to_emit.append(line)
+
+            # Emit NGOÀI lock để tránh deadlock
+            for line in lines_to_emit:
+                self._bridge.emit_log(line, self._classify(line))
+
         except Exception:
             pass
 
@@ -528,9 +596,16 @@ class SafeStdoutRedirector:
         except Exception:
             pass
 
+    def fileno(self):
+        """Cần cho một số thư viện check fileno."""
+        try:
+            return self._real.fileno()
+        except Exception:
+            return -1
+
     def _classify(self, line: str) -> str:
         l = line.lower()
-        if any(k in l for k in ("error", "fail", "exception", "traceback")):
+        if any(k in l for k in ("error", "fail", "exception", "traceback", "crash")):
             return "error"
         if "warn" in l:
             return "warn"
@@ -538,9 +613,9 @@ class SafeStdoutRedirector:
             return "ocr"
         if "[pipeline]" in l:
             return "trans" if "translat" in l else "ocr"
-        if any(k in l for k in ("done", "ready", "success", "initialized")):
+        if any(k in l for k in ("done", "ready", "success", "initialized", "loaded")):
             return "ok"
-        if any(k in l for k in ("[app]", "[hotkey", "[setting", "[asset", "[translator]")):
+        if any(k in l for k in ("[app]", "[hotkey", "[setting", "[translator]")):
             return "info"
         return "debug"
 
@@ -548,6 +623,7 @@ class SafeStdoutRedirector:
 # ==================================================
 # MAIN WINDOW
 # ==================================================
+
 
 class MainWindow(QMainWindow):
     """
@@ -559,16 +635,28 @@ class MainWindow(QMainWindow):
         capture_requested — user wants to capture
     """
 
-    settings_changed  = Signal()
-    hotkey_changed    = Signal(str)
+    settings_changed = Signal()
+    hotkey_changed = Signal(str)
     capture_requested = Signal()
     _test_result_signal = Signal(bool, str)  # thread-safe signal for test result
 
+    def _restore_stdout(self):
+        """Restore stdout khi app đóng."""
+        try:
+            sys.stdout = sys.__stdout__
+        except Exception:
+            pass
+
+    def closeEvent(self, event):
+        """Hide to tray on close."""
+        event.ignore()
+        self.hide()
+
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._updating_ui   = False
+        self._updating_ui = False
         self._is_processing = False
-        self._redirector    = None
+        self._redirector = None
 
         self._setup_window()
         self._build_ui()
@@ -618,9 +706,7 @@ class MainWindow(QMainWindow):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setStyleSheet(
             "QScrollArea, QScrollArea > QWidget { "
             "background: transparent; border: none; }"
@@ -696,9 +782,7 @@ class MainWindow(QMainWindow):
 
         self._capture_btn = QPushButton("  ⊡  Capture Region")
         self._capture_btn.setObjectName("capture_btn")
-        self._capture_btn.setToolTip(
-            "Start region selection (same as global hotkey)"
-        )
+        self._capture_btn.setToolTip("Start region selection (same as global hotkey)")
         self._capture_btn.clicked.connect(self._on_capture_clicked)
 
         hint_row = QHBoxLayout()
@@ -725,15 +809,15 @@ class MainWindow(QMainWindow):
         form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
 
         LANGS = [
-            ("English",              "en"),
-            ("Vietnamese",           "vi"),
+            ("English", "en"),
+            ("Vietnamese", "vi"),
             ("Chinese (Simplified)", "zh"),
-            ("Japanese",             "ja"),
-            ("Korean",               "ko"),
-            ("French",               "fr"),
-            ("German",               "de"),
-            ("Spanish",              "es"),
-            ("Russian",              "ru"),
+            ("Japanese", "ja"),
+            ("Korean", "ko"),
+            ("French", "fr"),
+            ("German", "de"),
+            ("Spanish", "es"),
+            ("Russian", "ru"),
         ]
 
         self._source_lang = QComboBox()
@@ -772,10 +856,10 @@ class MainWindow(QMainWindow):
         # Backend selector + Setup button
         self._backend_combo = QComboBox()
         self._backend_combo.addItem("Google Translate  (free, online)", "google")
-        self._backend_combo.addItem("OpenAI GPT  (paid API key)",       "openai")
-        self._backend_combo.addItem("Ollama  (free local AI)  ⭐",      "ollama")
-        self._backend_combo.addItem("LM Studio  (free local AI)",       "lmstudio")
-        self._backend_combo.addItem("llama.cpp server  (advanced)",     "llamacpp")
+        self._backend_combo.addItem("OpenAI GPT  (paid API key)", "openai")
+        self._backend_combo.addItem("Ollama  (free local AI)  ⭐", "ollama")
+        self._backend_combo.addItem("LM Studio  (free local AI)", "lmstudio")
+        self._backend_combo.addItem("llama.cpp server  (advanced)", "llamacpp")
         self._backend_combo.currentIndexChanged.connect(self._on_backend_changed)
 
         backend_row = QHBoxLayout()
@@ -793,10 +877,10 @@ class MainWindow(QMainWindow):
 
         # Translation style selector
         self._style_combo = QComboBox()
-        self._style_combo.addItem("Novel / Web Novel",    "novel")
+        self._style_combo.addItem("Novel / Web Novel", "novel")
         self._style_combo.addItem("Manga / Manhwa / Comic", "manga")
-        self._style_combo.addItem("Subtitle / Movie",     "subtitle")
-        self._style_combo.addItem("General",              "general")
+        self._style_combo.addItem("Subtitle / Movie", "subtitle")
+        self._style_combo.addItem("General", "general")
         self._style_combo.currentIndexChanged.connect(self._on_setting_changed)
         form.addRow("Style:", self._style_combo)
 
@@ -815,8 +899,8 @@ class MainWindow(QMainWindow):
 
         # OpenAI model selector
         self._model_combo = QComboBox()
-        self._model_combo.addItem("gpt-4o-mini  (fast)",   "gpt-4o-mini")
-        self._model_combo.addItem("gpt-4o  (best)",        "gpt-4o")
+        self._model_combo.addItem("gpt-4o-mini  (fast)", "gpt-4o-mini")
+        self._model_combo.addItem("gpt-4o  (best)", "gpt-4o")
         self._model_combo.addItem("gpt-3.5-turbo  (legacy)", "gpt-3.5-turbo")
         self._model_combo.currentIndexChanged.connect(self._on_setting_changed)
         form.addRow("GPT Model:", self._model_combo)
@@ -967,13 +1051,13 @@ class MainWindow(QMainWindow):
         form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
 
         self._ocr_lang_combo = QComboBox()
-        self._ocr_lang_combo.addItem("English",                "en")
-        self._ocr_lang_combo.addItem("Vietnamese + English",   "vi")
-        self._ocr_lang_combo.addItem("Chinese (Simplified)",   "ch")
-        self._ocr_lang_combo.addItem("Japanese",               "ja")
-        self._ocr_lang_combo.addItem("Korean",                 "ko")
-        self._ocr_lang_combo.addItem("French",                 "fr")
-        self._ocr_lang_combo.addItem("German",                 "de")
+        self._ocr_lang_combo.addItem("English", "en")
+        self._ocr_lang_combo.addItem("Vietnamese + English", "vi")
+        self._ocr_lang_combo.addItem("Chinese (Simplified)", "ch")
+        self._ocr_lang_combo.addItem("Japanese", "ja")
+        self._ocr_lang_combo.addItem("Korean", "ko")
+        self._ocr_lang_combo.addItem("French", "fr")
+        self._ocr_lang_combo.addItem("German", "de")
         self._ocr_lang_combo.currentIndexChanged.connect(self._on_setting_changed)
         form.addRow("OCR Language:", self._ocr_lang_combo)
         return g
@@ -1114,9 +1198,9 @@ class MainWindow(QMainWindow):
             self._bg_widget.reload_background()
 
     def _on_backend_changed(self):
-        backend   = self._backend_combo.currentData()
+        backend = self._backend_combo.currentData()
         is_openai = backend == "openai"
-        is_local  = backend in ("ollama", "lmstudio", "llamacpp")
+        is_local = backend in ("ollama", "lmstudio", "llamacpp")
 
         self._model_combo.setEnabled(is_openai)
         self._api_key_edit.setEnabled(is_openai)
@@ -1137,7 +1221,7 @@ class MainWindow(QMainWindow):
             self.hotkey_changed.emit(new_key)
 
     def _on_bg_toggle(self, state: int):
-        enabled = (state == Qt.CheckState.Checked.value)
+        enabled = state == Qt.CheckState.Checked.value
         settings.set("use_custom_background", enabled)
         self._bg_widget.reload_background()
 
@@ -1180,6 +1264,7 @@ class MainWindow(QMainWindow):
     def _open_local_ai_setup(self):
         """Open the Local AI setup guide dialog."""
         from ui.local_ai_dialog import LocalAIDialog
+
         dlg = LocalAIDialog(self)
         dlg.backend_configured.connect(self._on_backend_configured)
         dlg.exec()
@@ -1206,16 +1291,17 @@ class MainWindow(QMainWindow):
         self._save_settings()
 
         from translator import reset_translator, get_translator
+
         reset_translator()
 
         def _run():
-            ok  = False
+            ok = False
             msg = "Unknown error"
             try:
                 t = get_translator()
                 ok, msg = t.test_backend()
             except Exception as e:
-                ok  = False
+                ok = False
                 msg = str(e)
             finally:
                 self._test_result_signal.emit(ok, msg)
@@ -1266,9 +1352,7 @@ class MainWindow(QMainWindow):
             self._set_combo_by_data(
                 self._style_combo, settings.get("translation_style", "novel")
             )
-            self._ollama_model_edit.setText(
-                settings.get("ollama_model", "qwen2.5:7b")
-            )
+            self._ollama_model_edit.setText(settings.get("ollama_model", "qwen2.5:7b"))
             self._api_key_edit.setText(settings.get("openai_api_key", ""))
             self._set_combo_by_data(
                 self._model_combo, settings.get("openai_model", "gpt-4o-mini")
@@ -1285,19 +1369,13 @@ class MainWindow(QMainWindow):
                 f"or press  <b>{hk.upper()}</b>  anywhere on screen"
             )
 
-            self._ai_cleanup_check.setChecked(
-                settings.get("cleanup_with_ai", False)
-            )
-            self._cache_check.setChecked(
-                settings.get("cache_translations", True)
-            )
+            self._ai_cleanup_check.setChecked(settings.get("cleanup_with_ai", False))
+            self._cache_check.setChecked(settings.get("cache_translations", True))
             self._set_combo_by_data(
                 self._ocr_lang_combo, settings.get("ocr_language", "en")
             )
 
-            self._use_bg_check.setChecked(
-                settings.get("use_custom_background", False)
-            )
+            self._use_bg_check.setChecked(settings.get("use_custom_background", False))
             custom_path = settings.get("custom_background", "")
             if custom_path:
                 self._bg_path_edit.setText(custom_path)
@@ -1314,24 +1392,26 @@ class MainWindow(QMainWindow):
         if self._updating_ui:
             return
 
-        settings.update({
-            "source_language":       self._source_lang.currentData(),
-            "target_language":       self._target_lang.currentData(),
-            "translation_backend":   self._backend_combo.currentData(),
-            "translation_style":     self._style_combo.currentData(),
-            "ollama_model":          self._ollama_model_edit.text().strip() or "qwen2.5:7b",
-            "openai_api_key":        self._api_key_edit.text().strip(),
-            "openai_model":          self._model_combo.currentData(),
-            "font_size":             self._font_size_spin.value(),
-            "overlay_opacity":       self._opacity_slider.value() / 100.0,
-            "hotkey":                self._hotkey_edit.text().strip().lower() or "q",
-            "cleanup_with_ai":       self._ai_cleanup_check.isChecked(),
-            "cache_translations":    self._cache_check.isChecked(),
-            "ocr_language":          self._ocr_lang_combo.currentData(),
-            "background_opacity":    self._bg_opacity_slider.value() / 100.0,
-            "use_custom_background": self._use_bg_check.isChecked(),
-            "custom_background":     self._bg_path_edit.text().strip(),
-        })
+        settings.update(
+            {
+                "source_language": self._source_lang.currentData(),
+                "target_language": self._target_lang.currentData(),
+                "translation_backend": self._backend_combo.currentData(),
+                "translation_style": self._style_combo.currentData(),
+                "ollama_model": self._ollama_model_edit.text().strip() or "qwen2.5:7b",
+                "openai_api_key": self._api_key_edit.text().strip(),
+                "openai_model": self._model_combo.currentData(),
+                "font_size": self._font_size_spin.value(),
+                "overlay_opacity": self._opacity_slider.value() / 100.0,
+                "hotkey": self._hotkey_edit.text().strip().lower() or "q",
+                "cleanup_with_ai": self._ai_cleanup_check.isChecked(),
+                "cache_translations": self._cache_check.isChecked(),
+                "ocr_language": self._ocr_lang_combo.currentData(),
+                "background_opacity": self._bg_opacity_slider.value() / 100.0,
+                "use_custom_background": self._use_bg_check.isChecked(),
+                "custom_background": self._bg_path_edit.text().strip(),
+            }
+        )
         self.settings_changed.emit()
         self._status_bar.showMessage("Saved.", 1500)
 
@@ -1342,11 +1422,11 @@ class MainWindow(QMainWindow):
     def set_status(self, message: str, level: str = "ok"):
         """Update status dot + text + log."""
         colors = {
-            "ok":         ("#3a8a5a", "#40706a"),
-            "warn":       ("#8a7a30", "#706040"),
-            "error":      ("#8a3a3a", "#704040"),
+            "ok": ("#3a8a5a", "#40706a"),
+            "warn": ("#8a7a30", "#706040"),
+            "error": ("#8a3a3a", "#704040"),
             "processing": ("#3a5aaa", "#405090"),
-            "idle":       ("#303050", "#303050"),
+            "idle": ("#303050", "#303050"),
         }
         c_dot, c_txt = colors.get(level, ("#404060", "#404060"))
         self._status_dot.setStyleSheet(

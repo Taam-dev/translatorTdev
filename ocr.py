@@ -5,40 +5,33 @@ OCR text extraction with multiple backend support.
 
 Primary:  EasyOCR  (stable on Windows, no oneDNN issues)
 Fallback: PaddleOCR (optional)
-Fallback: Tesseract via pytesseract (optional)
 
 EasyOCR is recommended - it works reliably on Windows 10/11
 without the PaddlePaddle oneDNN driver issues.
 """
 
+import sys
 import numpy as np
 from PIL import Image
 from typing import Optional
 import logging
 import os
-import sys
 
 logger = logging.getLogger(__name__)
 
 
 # ==================================================
 # ENVIRONMENT PATCHES
-# Suppress verbose output and fix known Windows issues
 # ==================================================
+
 
 def _patch_environment():
     """Apply environment variable patches before loading OCR libs."""
-    # Suppress PaddlePaddle verbose logging
     os.environ.setdefault("GLOG_minloglevel", "3")
     os.environ.setdefault("GLOG_logtostderr", "0")
     os.environ.setdefault("FLAGS_call_stack_level", "0")
-
-    # Disable oneDNN (MKL-DNN) to avoid the ConvertPirAttribute error on Windows
-    # This is the root cause of the "ConvertPirAttribute2RuntimeAttribute" error
     os.environ["FLAGS_use_mkldnn"] = "0"
     os.environ["PADDLE_DISABLE_STATIC"] = "1"
-
-    # Suppress EasyOCR/torch verbose output
     os.environ.setdefault("PYTHONWARNINGS", "ignore")
 
 
@@ -48,6 +41,7 @@ _patch_environment()
 # ==================================================
 # BASE CLASS
 # ==================================================
+
 
 class BaseOCREngine:
     """Abstract base for OCR backends."""
@@ -63,7 +57,6 @@ class BaseOCREngine:
         raise NotImplementedError
 
     def is_available(self) -> bool:
-        """Check if this backend can be loaded."""
         raise NotImplementedError
 
 
@@ -71,15 +64,11 @@ class BaseOCREngine:
 # EASYOCR BACKEND
 # ==================================================
 
+
 class EasyOCREngine(BaseOCREngine):
     """
     EasyOCR backend.
-
-    Pros:
-    - Stable on Windows (no oneDNN issues)
-    - Good accuracy for English
-    - Simple API
-
+    Stable on Windows, good accuracy for English.
     Install: pip install easyocr
     """
 
@@ -95,56 +84,48 @@ class EasyOCREngine(BaseOCREngine):
         try:
             import easyocr
 
-            print(f"[OCR] Initializing EasyOCR (lang={self._languages})...")
-            print("[OCR] First run will download models (~100MB), please wait...")
+            print(
+                f"[OCR] Initializing EasyOCR (lang={self._languages})...",
+                file=sys.__stderr__,
+            )
+            print(
+                "[OCR] First run will download models (~100MB), please wait...",
+                file=sys.__stderr__,
+            )
 
-            # gpu=False for maximum compatibility
-            # verbose=False to suppress download progress spam
             self._reader = easyocr.Reader(
                 self._languages,
                 gpu=False,
                 verbose=False,
             )
             self._initialized = True
-            print("[OCR] EasyOCR ready.")
+            print("[OCR] EasyOCR ready.", file=sys.__stderr__)
 
         except ImportError:
-            raise RuntimeError(
-                "EasyOCR not installed.\n"
-                "Run: pip install easyocr"
-            )
+            raise RuntimeError("EasyOCR not installed.\nRun: pip install easyocr")
         except Exception as e:
             raise RuntimeError(f"EasyOCR initialization failed: {e}")
 
     def is_available(self) -> bool:
         try:
             import easyocr
+
             return True
         except ImportError:
             return False
 
     def extract(self, image: Image.Image) -> list[dict]:
-        """
-        Run EasyOCR on a PIL Image.
-
-        EasyOCR returns:
-        [ ([x1,y1], [x2,y2], [x3,y3], [x4,y4]),  text,  confidence ]
-        """
+        """Run EasyOCR on a PIL Image."""
         self._initialize()
 
-        # EasyOCR works best with numpy array
         img_array = np.array(image)
 
-        # Handle grayscale images
         if len(img_array.shape) == 2:
             img_array = np.stack([img_array] * 3, axis=-1)
         elif img_array.shape[2] == 4:
-            # RGBA -> RGB
             img_array = img_array[:, :, :3]
 
         try:
-            # detail=1 returns bounding boxes
-            # paragraph=False gives us per-word/line boxes
             results = self._reader.readtext(
                 img_array,
                 detail=1,
@@ -152,7 +133,7 @@ class EasyOCREngine(BaseOCREngine):
             )
         except Exception as e:
             logger.error(f"EasyOCR readtext failed: {e}")
-            print(f"[OCR] EasyOCR error: {e}")
+            print(f"[OCR] EasyOCR error: {e}", file=sys.__stderr__)
             return []
 
         return self._parse_results(results)
@@ -174,14 +155,15 @@ class EasyOCREngine(BaseOCREngine):
                 if not text:
                     continue
 
-                # EasyOCR box is list of 4 [x,y] points
                 box = [[float(pt[0]), float(pt[1])] for pt in box_raw]
 
-                parsed.append({
-                    "text": text,
-                    "confidence": float(confidence),
-                    "box": box,
-                })
+                parsed.append(
+                    {
+                        "text": text,
+                        "confidence": float(confidence),
+                        "box": box,
+                    }
+                )
             except Exception as e:
                 logger.debug(f"Result parse error: {e}")
                 continue
@@ -189,7 +171,7 @@ class EasyOCREngine(BaseOCREngine):
         return parsed
 
     def change_language(self, languages: list[str]):
-        """Change OCR languages - requires re-init."""
+        """Change OCR languages — requires re-init."""
         if sorted(languages) != sorted(self._languages):
             self._languages = languages
             self._initialized = False
@@ -200,14 +182,11 @@ class EasyOCREngine(BaseOCREngine):
 # PADDLEOCR BACKEND (FALLBACK)
 # ==================================================
 
+
 class PaddleOCREngine(BaseOCREngine):
     """
-    PaddleOCR backend - optional fallback.
-
-    Known issues on Windows:
-    - Requires specific PaddlePaddle version
-    - oneDNN driver issues (mitigated by FLAGS_use_mkldnn=0)
-    - Slower initialization
+    PaddleOCR backend — optional fallback.
+    Known issues on Windows with oneDNN (mitigated by FLAGS_use_mkldnn=0).
     """
 
     def __init__(self, language: str = "en"):
@@ -218,6 +197,7 @@ class PaddleOCREngine(BaseOCREngine):
     def is_available(self) -> bool:
         try:
             import paddleocr
+
             return True
         except ImportError:
             return False
@@ -228,7 +208,11 @@ class PaddleOCREngine(BaseOCREngine):
 
         try:
             from paddleocr import PaddleOCR
-            print(f"[OCR] Initializing PaddleOCR (lang={self._language})...")
+
+            print(
+                f"[OCR] Initializing PaddleOCR (lang={self._language})...",
+                file=sys.__stderr__,
+            )
 
             errors = []
 
@@ -236,7 +220,7 @@ class PaddleOCREngine(BaseOCREngine):
             try:
                 self._ocr = PaddleOCR(lang=self._language)
                 self._initialized = True
-                print("[OCR] PaddleOCR ready (new API).")
+                print("[OCR] PaddleOCR ready (new API).", file=sys.__stderr__)
                 return
             except Exception as e:
                 errors.append(str(e))
@@ -247,19 +231,19 @@ class PaddleOCREngine(BaseOCREngine):
                     use_angle_cls=True,
                     lang=self._language,
                     use_gpu=False,
-                    enable_mkldnn=False,  # Disable oneDNN explicitly
+                    enable_mkldnn=False,
                 )
                 self._initialized = True
-                print("[OCR] PaddleOCR ready (old API).")
+                print("[OCR] PaddleOCR ready (old API).", file=sys.__stderr__)
                 return
             except Exception as e:
                 errors.append(str(e))
 
-            # Attempt 3: Absolute bare minimum
+            # Attempt 3: Bare minimum
             try:
                 self._ocr = PaddleOCR()
                 self._initialized = True
-                print("[OCR] PaddleOCR ready (bare).")
+                print("[OCR] PaddleOCR ready (bare).", file=sys.__stderr__)
                 return
             except Exception as e:
                 errors.append(str(e))
@@ -280,10 +264,10 @@ class PaddleOCREngine(BaseOCREngine):
             try:
                 raw = self._ocr.ocr(img_array)
             except Exception as e:
-                print(f"[OCR] PaddleOCR.ocr() failed: {e}")
+                print(f"[OCR] PaddleOCR.ocr() failed: {e}", file=sys.__stderr__)
                 return []
         except Exception as e:
-            print(f"[OCR] PaddleOCR.ocr() failed: {e}")
+            print(f"[OCR] PaddleOCR.ocr() failed: {e}", file=sys.__stderr__)
             return []
 
         return self._parse(raw)
@@ -305,56 +289,62 @@ class PaddleOCREngine(BaseOCREngine):
                     text = str(text_info).strip()
                     conf = 1.0
                 if text:
-                    results.append({"text": text, "confidence": conf, "box": box})
+                    results.append(
+                        {
+                            "text": text,
+                            "confidence": conf,
+                            "box": box,
+                        }
+                    )
         except Exception as e:
             logger.error(f"PaddleOCR parse error: {e}")
         return results
 
 
 # ==================================================
-# SMART ENGINE SELECTOR
+# LANGUAGE MAPS
 # ==================================================
 
-# Language code mapping: settings code -> EasyOCR language list
 EASYOCR_LANG_MAP = {
-    "en":     ["en"],
-    "vi":     ["en", "vi"],     # EasyOCR supports Vietnamese
-    "ch":     ["ch_sim", "en"],
-    "ja":     ["ja", "en"],
-    "japan":  ["ja", "en"],
-    "ko":     ["ko", "en"],
+    "en": ["en"],
+    "vi": ["en", "vi"],
+    "ch": ["ch_sim", "en"],
+    "ja": ["ja", "en"],
+    "japan": ["ja", "en"],
+    "ko": ["ko", "en"],
     "korean": ["ko", "en"],
-    "fr":     ["fr", "en"],
+    "fr": ["fr", "en"],
     "french": ["fr", "en"],
-    "de":     ["de", "en"],
+    "de": ["de", "en"],
     "german": ["de", "en"],
-    "es":     ["es", "en"],
-    "ru":     ["ru", "en"],
+    "es": ["es", "en"],
+    "ru": ["ru", "en"],
 }
 
-# Settings code -> PaddleOCR language string
 PADDLE_LANG_MAP = {
-    "en":     "en",
-    "vi":     "en",   # PaddleOCR doesn't have Vietnamese, use English
-    "ch":     "ch",
-    "ja":     "japan",
-    "japan":  "japan",
-    "ko":     "korean",
+    "en": "en",
+    "vi": "en",
+    "ch": "ch",
+    "ja": "japan",
+    "japan": "japan",
+    "ko": "korean",
     "korean": "korean",
-    "fr":     "french",
+    "fr": "french",
     "french": "french",
-    "de":     "german",
+    "de": "german",
     "german": "german",
 }
+
+
+# ==================================================
+# ENGINE MANAGER
+# ==================================================
 
 
 class OCREngineManager:
     """
     Manages OCR backend selection with automatic fallback.
-
-    Priority order:
-    1. EasyOCR  (most stable on Windows)
-    2. PaddleOCR (fallback if EasyOCR unavailable)
+    Priority: EasyOCR → PaddleOCR
     """
 
     def __init__(self):
@@ -363,10 +353,7 @@ class OCREngineManager:
         self._current_lang: str = ""
 
     def get_engine(self, lang_code: str = "en") -> BaseOCREngine:
-        """
-        Get the best available OCR engine for the given language.
-        Reuses existing engine if language hasn't changed.
-        """
+        """Get best available OCR engine. Reuses if language unchanged."""
         if self._engine is not None and lang_code == self._current_lang:
             return self._engine
 
@@ -377,7 +364,10 @@ class OCREngineManager:
         easy = EasyOCREngine(languages=easyocr_langs)
 
         if easy.is_available():
-            print(f"[OCR] Using EasyOCR backend (langs={easyocr_langs})")
+            print(
+                f"[OCR] Using EasyOCR backend (langs={easyocr_langs})",
+                file=sys.__stderr__,
+            )
             self._engine = easy
             self._backend_name = "easyocr"
             return self._engine
@@ -387,7 +377,10 @@ class OCREngineManager:
         paddle = PaddleOCREngine(language=paddle_lang)
 
         if paddle.is_available():
-            print(f"[OCR] Using PaddleOCR backend (lang={paddle_lang})")
+            print(
+                f"[OCR] Using PaddleOCR backend (lang={paddle_lang})",
+                file=sys.__stderr__,
+            )
             self._engine = paddle
             self._backend_name = "paddleocr"
             return self._engine
@@ -399,7 +392,6 @@ class OCREngineManager:
         )
 
     def extract(self, image: Image.Image, lang_code: str = "en") -> list[dict]:
-        """Convenience: get engine and extract in one call."""
         engine = self.get_engine(lang_code)
         return engine.extract(image)
 
@@ -411,6 +403,7 @@ class OCREngineManager:
 # ==================================================
 # UTILITY
 # ==================================================
+
 
 def get_bounding_rect(box: list) -> tuple[int, int, int, int]:
     """Convert quad box [[x,y]x4] to (x, y, w, h)."""
@@ -425,42 +418,56 @@ def get_bounding_rect(box: list) -> tuple[int, int, int, int]:
 
 def preprocess_image_for_ocr(image: Image.Image) -> Image.Image:
     """
-    Preprocess image to improve OCR accuracy.
-
-    Steps:
-    - Upscale small images (OCR struggles with tiny text)
-    - Convert to RGB
-    - Enhance contrast slightly
+    Preprocess image để OCR chính xác hơn.
+    KHÔNG dùng print() — được gọi từ background thread!
+    Dùng sys.__stderr__ nếu cần debug.
     """
-    from PIL import ImageEnhance, ImageFilter
+    from PIL import ImageEnhance
 
-    # Ensure RGB
     if image.mode != "RGB":
         image = image.convert("RGB")
 
     w, h = image.size
 
-    # Upscale if image is very small
     MIN_SIZE = 100
     if w < MIN_SIZE or h < MIN_SIZE:
         scale = max(MIN_SIZE / w, MIN_SIZE / h, 1.0)
         new_w = int(w * scale)
         new_h = int(h * scale)
         image = image.resize((new_w, new_h), Image.LANCZOS)
-        print(f"[OCR] Upscaled image: {w}x{h} -> {new_w}x{new_h}")
+        print(f"[OCR] Upscaled: {w}x{h} → {new_w}x{new_h}", file=sys.__stderr__)
 
-    # Upscale for better OCR if image is small overall
     PREFERRED_MIN = 400
     if w < PREFERRED_MIN and h < PREFERRED_MIN:
-        scale = 2.0
-        image = image.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
-        print(f"[OCR] Upscaled 2x for OCR quality")
+        image = image.resize((int(w * 2), int(h * 2)), Image.LANCZOS)
+        print("[OCR] Upscaled 2x for quality", file=sys.__stderr__)
 
-    # Slight contrast boost helps OCR accuracy
     enhancer = ImageEnhance.Contrast(image)
     image = enhancer.enhance(1.3)
 
     return image
+
+
+def run_ocr(image: Image.Image, language: str = "en") -> list[dict]:
+    """
+    Main OCR entry point used by the pipeline.
+    KHÔNG dùng print() ra stdout — được gọi từ background thread!
+    stdout bị redirect vào GUI → print() từ thread → CRASH.
+    Dùng sys.__stderr__ để debug an toàn.
+    """
+    processed = preprocess_image_for_ocr(image)
+    engine = _manager.get_engine(language)
+    results = engine.extract(processed)
+
+    # Log ra stderr (không bị redirect vào GUI)
+    print(f"[OCR] Extracted {len(results)} boxes", file=sys.__stderr__)
+    for r in results:
+        print(
+            f"[OCR]   conf={r['confidence']:.2f}  text={r['text']!r}",
+            file=sys.__stderr__,
+        )
+
+    return results
 
 
 # ==================================================
@@ -473,30 +480,3 @@ _manager = OCREngineManager()
 def get_ocr_engine(language: str = "en") -> BaseOCREngine:
     """Get the best available OCR engine for the given language."""
     return _manager.get_engine(language)
-
-
-def run_ocr(image: Image.Image, language: str = "en") -> list[dict]:
-    """
-    Main OCR entry point used by the pipeline.
-
-    Preprocesses image then runs OCR.
-
-    Args:
-        image: PIL Image to process
-        language: Language code from settings
-
-    Returns:
-        List of {text, confidence, box} dicts
-    """
-    # Preprocess for better accuracy
-    processed = preprocess_image_for_ocr(image)
-
-    engine = _manager.get_engine(language)
-    results = engine.extract(processed)
-
-    # Log results for debugging
-    print(f"[OCR] Extracted {len(results)} text boxes:")
-    for r in results:
-        print(f"[OCR]   conf={r['confidence']:.2f}  text={r['text']!r}")
-
-    return results
